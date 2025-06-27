@@ -10,11 +10,13 @@ CHEKPOINTS = {
 }
 
 ROLE_DESCRIPTION = {
+    # TODO : Only return node id need to be erased
     "NodeEraser": 
         "You are a graph eraser expert. "
-        "And I will give you a graph, please remove a node that you think it is not important. "
+        "And I will give you a graph, please must remove one or more nodes that you think it is not important. "
         "I will show you the edge's information and node's lable. "
-        "Please only return the graph edge label list and node label dict, such as: edge: [[1,2,0], [2,3,1]], node_label: [{{1:0}}, {{2:0}}, {{3:1}}]. ",
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
 
     "EdgeEraser": 
         "You are a graph eraser expert. "

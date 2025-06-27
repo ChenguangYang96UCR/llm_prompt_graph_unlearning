@@ -4,9 +4,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+import json
+import os
 from tqdm import tqdm
 from src.agent import NormAgent
-from src.utils import read_data, construct_prompt_graph, load_data, separate_data
+from src.utils import read_data, construct_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, LOGGER
 from src.models.graphcnn import GraphCNN
 
 
@@ -82,18 +84,25 @@ def test(args, model, device, train_graphs, test_graphs, epoch):
 def main(args):
 
     #! Load orginal data and initialize agent
-    data = read_data('MUTAG')
+    data = read_data(args.dataset)
     print(data[0])
     llm_agnet =  NormAgent(1, 'NodeEraser', 'Openai')
-
-    for graph in data:
+    os.makedirs(f'result/{args.dataset}/', exist_ok=True)
+    new_data = []
+    for index,  graph in enumerate(data):
         #* Construct graph prompt
         edge = graph['edges']
         node_lable = graph['node_labels']
         graph_prompt = construct_prompt_graph(edge, node_lable)
         response =  llm_agnet.get_response(query = graph_prompt)
-        print(response)
-        break
+        LOGGER.debug(f'Graph {index} LLM Response: {response}')
+        node_list = extract_delete_node(response)
+        LOGGER.debug(f'Nodes need to be deleted: {node_list}')
+        new_graph = delete_node(graph, node_list)
+        new_data.append(new_graph)
+        
+    with open(f'result/{args.dataset}/result.json', 'w') as output:
+            json.dump(new_data, output)
 
     #! execute the GCN for erased graph
     #set up seeds and gpu device
