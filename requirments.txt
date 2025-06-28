@@ -4,6 +4,6 @@ tqdm
 networkx
 scikit-learn
 huggingface_hub
-openai
+openai==0.28
 torch_geometric
 transformers
