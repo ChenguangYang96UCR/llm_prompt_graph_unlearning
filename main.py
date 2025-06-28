@@ -85,10 +85,11 @@ def main(args):
 
     #! Load orginal data and initialize agent
     data = read_data(args.dataset)
-    print(data[0])
     llm_agnet =  NormAgent(1, 'NodeEraser', 'Openai')
     os.makedirs(f'result/{args.dataset}/', exist_ok=True)
     new_data = []
+
+    #! Ask LLM to delete nodes and store new graph into json file
     for index,  graph in enumerate(data):
         #* Construct graph prompt
         edge = graph['edges']
@@ -100,6 +101,8 @@ def main(args):
         LOGGER.debug(f'Nodes need to be deleted: {node_list}')
         new_graph = delete_node(graph, node_list)
         new_data.append(new_graph)
+        # if index > 10:
+        #     break
         
     with open(f'result/{args.dataset}/result.json', 'w') as output:
             json.dump(new_data, output)

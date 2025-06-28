@@ -8,6 +8,18 @@ import re
 from sklearn.model_selection import StratifiedKFold
 
 def set_logger(log_file = 'multi_agent.log', log_level=logging.DEBUG):
+
+    """
+    Set python logger
+
+    Args:
+        log_file (str, optional): logger file path. Defaults to 'multi_agent.log'.
+        log_level (_type_, optional): logger level. Defaults to logging.DEBUG.
+
+    Returns:
+        class: logger class
+    """    
+
     logger = logging.getLogger(__name__)
     logger.setLevel(log_level)
     log_format = logging.Formatter(
@@ -25,10 +37,16 @@ def set_logger(log_file = 'multi_agent.log', log_level=logging.DEBUG):
 
     return logger
 
+# Global parameter LOGGER
 LOGGER = set_logger(log_level = logging.DEBUG)
 
 
 def mutag_preprocess():
+
+    """
+    MUTAG dataset preprocess, write data into json file
+    """    
+
     os.makedirs('output/MUTAG/', exist_ok=True)
     #* Get node number for each graph
     nodes_numbers = []
@@ -194,16 +212,25 @@ class S2VGraph(object):
         self.node_features = 0
         self.edge_mat = 0
         self.max_neighbor = 0
-        print(f'node number: {len(self.g)}, label number: {len(node_tags)}')
-        print(f'node list: {list(self.g.nodes)}')
 
 def load_data(data_set:str, degree_as_tag:bool):
-    print('loading data')
+
+    """
+    load data to operate GCN 
+
+    Args:
+        data_set (str): data set name
+        degree_as_tag (bool): determine use degree as tag or not
+
+    Returns:
+        list, type number of graph class: [graph_list, type numbers]
+    """    
+
     g_list = []
     label_dict = {}
     feat_dict = {}
-
     data_list = ['MUTAG']
+    LOGGER.debug(f'GCN Load {data_set} data')
     assert data_set in data_list , 'Your data set does not exist!'
     # TODO: will change this dictionary as result
     with open(f'result/{data_set}/result.json', 'r') as file:
@@ -274,6 +301,19 @@ def load_data(data_set:str, degree_as_tag:bool):
     return g_list, 2
         
 def separate_data(graph_list, seed, fold_idx):
+
+    """
+    separate dataset to training set and test set
+
+    Args:
+        graph_list (list): graph data list
+        seed (int): random seed
+        fold_idx (int): index range limitation
+
+    Returns:
+        [list, list]: [training graph list, test graph list]
+    """    
+
     assert 0 <= fold_idx and fold_idx < 10, "fold_idx must be from 0 to 9."
     skf = StratifiedKFold(n_splits=10, shuffle = True, random_state = seed)
 
@@ -308,6 +348,18 @@ def extract_delete_node(response : str):
 
 
 def delete_and_reorder_with_mapping(node_dict, to_delete):
+
+    """
+    delete node which need to be deleted and reorder remain nodes
+
+    Args:
+        node_dict (dict): node dictionary ({node_id : node label})
+        to_delete (list): nodes list which need to be deleted 
+
+    Returns:
+        [list, list]: [remain node list, new_id to old_id map]
+    """    
+
     to_delete_set = set(to_delete)
 
     # Step 1: Filter remaining items
@@ -330,6 +382,18 @@ def delete_and_reorder_with_mapping(node_dict, to_delete):
 
 
 def delete_node(graph, deleted_node:list):
+
+    """
+    delete nodes which need to be deleted 
+
+    Args:
+        graph (dict): graph dictionary
+        deleted_node (list): nodes which need to be deleted 
+
+    Returns:
+        dict: new remain graph dictionary
+    """    
+    
     new_graph = {}
     #! Delete graph first
     edges = graph['edges']

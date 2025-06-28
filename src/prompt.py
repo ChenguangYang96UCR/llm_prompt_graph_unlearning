@@ -1,3 +1,0 @@
-Node_Eraser = {
-    "0": "In an undirected graph, the nodes are numbered from 0 to 6, and every node has an embedding. (i,j) means that node i and node j are connected with an undirected edge.\nEmbeddings:\nnode 0: [1,0]\nnode 1: [0,0]\nnode 2: [1,1]\nnode 3: [1,1]\nnode 4: [0,1]\nnode 5: [0,1]\nnode 6: [1,0]\nThe edges are: (0,1) (0,2) (0,3) (0,4) (1,3) (1,4) (2,5) (2,6) \nIn a simple graph convolution layer, each node's embedding is updated by the sum of its neighbors' embeddings.\nQ: If I want to erase the feature of [1, 1], can you help me generate a new graph?",
-}
