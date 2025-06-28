@@ -12,3 +12,7 @@ python data_loader.py
 
 python main.py
 ```
+
+# Warning
+
+Before run main code, you need to provide hugging face token and openai api key. You can find token string in **src/agent.py**
