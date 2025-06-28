@@ -5,3 +5,4 @@ networkx
 scikit-learn
 huggingface_hub
 openai
+torch_geometric
