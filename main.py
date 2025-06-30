@@ -46,8 +46,7 @@ def train(args, model, device, train_graphs, optimizer, epoch):
         pbar.set_description('epoch: %d' % (epoch))
 
     average_loss = loss_accum/total_iters
-    print("loss training: %f" % (average_loss))
-    
+    LOGGER.debug("loss training: %f" % (average_loss))    
     return average_loss
 
 ###pass data to model with minibatch during testing to avoid memory overflow (does not perform backpropagation)
@@ -77,7 +76,7 @@ def test(args, model, device, train_graphs, test_graphs, epoch):
     correct = pred.eq(labels.view_as(pred)).sum().cpu().item()
     acc_test = correct / float(len(test_graphs))
 
-    print("accuracy train: %f test: %f" % (acc_train, acc_test))
+    LOGGER.debug("accuracy train: %f test: %f" % (acc_train, acc_test))
 
     return acc_train, acc_test
 
@@ -135,9 +134,9 @@ def main(args):
             with open(args.filename, 'w') as f:
                 f.write("%f %f %f" % (avg_loss, acc_train, acc_test))
                 f.write("\n")
-        print("")
-
-        print(model.eps)
+                
+        LOGGER.debug("")
+        LOGGER.debug(model.eps)
 
 
 if __name__ == '__main__':
