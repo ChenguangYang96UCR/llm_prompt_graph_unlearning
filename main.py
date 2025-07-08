@@ -8,7 +8,7 @@ import json
 import os
 from tqdm import tqdm
 from src.agent import NormAgent
-from src.utils import read_data, construct_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, LOGGER
+from src.utils import read_data, construct_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces,LOGGER
 from src.models.graphcnn import GraphCNN
 
 
@@ -82,61 +82,74 @@ def test(args, model, device, train_graphs, test_graphs, epoch):
 
 def main(args):
 
-    #! Load orginal data and initialize agent
-    data = read_data(args.dataset)
-    llm_agnet =  NormAgent(1, 'NodeEraser', 'Openai')
-    os.makedirs(f'result/{args.dataset}/', exist_ok=True)
-    new_data = []
+    if not args.latent:
+        #! Load orginal data and initialize agent
+        data = read_data(args.dataset)
+        llm_agnet =  NormAgent(1, f'NodeEraser_{args.erease_num}', 'Openai')
+        os.makedirs(f'result/{args.dataset}/', exist_ok=True)
+        os.makedirs(f'store/{args.dataset}/', exist_ok=True)
+        new_data = []
 
-    #! Ask LLM to delete nodes and store new graph into json file
-    for index,  graph in enumerate(data):
-        #* Construct graph prompt
-        edge = graph['edges']
-        node_lable = graph['node_labels']
-        graph_prompt = construct_prompt_graph(edge, node_lable)
-        response =  llm_agnet.get_response(query = graph_prompt)
-        LOGGER.debug(f'Graph {index} LLM Response: {response}')
-        node_list = extract_delete_node(response)
-        LOGGER.debug(f'Nodes need to be deleted: {node_list}')
-        new_graph = delete_node(graph, node_list)
-        new_data.append(new_graph)
-        # if index > 10:
-        #     break
-        
-    with open(f'result/{args.dataset}/result.json', 'w') as output:
-            json.dump(new_data, output)
+        #! Ask LLM to delete nodes and store new graph into json file
+        for index,  graph in enumerate(data):
+            #* Construct graph prompt
+            edge = graph['edges']
+            node_lable = graph['node_labels']
+            face_list = get_faces(graph)
+            graph_prompt = construct_prompt_graph(edge, node_lable, face_list, args.additional_flag)
+            LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
+            response =  llm_agnet.get_response(query = graph_prompt)
+            LOGGER.debug(f'Graph {index} LLM Response: {response}')
+            node_list = extract_delete_node(response)
+            LOGGER.debug(f'Nodes need to be deleted: {node_list}')
+            new_graph = delete_node(graph, node_list)
+            new_data.append(new_graph)
+            # if index > 10:
+            #     break
+            
+        with open(f'result/{args.dataset}/result.json', 'w') as output:
+                json.dump(new_data, output)
+
+        with open(f'store/{args.dataset}/erase_{args.erease_num}.json', 'w') as output:
+                json.dump(new_data, output)
 
     #! execute the GCN for erased graph
+    graphs, num_classes = load_data(args.dataset, args.degree_as_tag, args.latent, args.erease_num)
     #set up seeds and gpu device
-    torch.manual_seed(0)
-    np.random.seed(0)    
-    device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(0)
 
-    graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
+    for key in range(5):
+        max_acc = 0.0
+        LOGGER.debug(f"******************************************************** Erase {args.erease_num} Random Seed {key} ********************************************************")
+        torch.manual_seed(key)
+        np.random.seed(key)   
+        device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(key)
 
-    ##10-fold cross validation. Conduct an experiment on the fold specified by args.fold_idx.
-    train_graphs, test_graphs = separate_data(graphs, args.seed, args.fold_idx)
+        ##10-fold cross validation. Conduct an experiment on the fold specified by args.fold_idx.
+        train_graphs, test_graphs = separate_data(graphs, key, args.fold_idx)
 
-    model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
+        model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
 
-    for epoch in range(1, args.epochs + 1):
-        scheduler.step()
+        for epoch in range(1, args.epochs + 1):
+            scheduler.step()
 
-        avg_loss = train(args, model, device, train_graphs, optimizer, epoch)
-        acc_train, acc_test = test(args, model, device, train_graphs, test_graphs, epoch)
+            avg_loss = train(args, model, device, train_graphs, optimizer, epoch)
+            acc_train, acc_test = test(args, model, device, train_graphs, test_graphs, epoch)
 
-        if not args.filename == "":
-            with open(args.filename, 'w') as f:
-                f.write("%f %f %f" % (avg_loss, acc_train, acc_test))
-                f.write("\n")
-                
-        LOGGER.debug("")
-        LOGGER.debug(model.eps)
+            if not args.filename == "":
+                with open(args.filename, 'w') as f:
+                    f.write("%f %f %f" % (avg_loss, acc_train, acc_test))
+                    f.write("\n")
+
+            LOGGER.debug("")
+            LOGGER.debug(model.eps)
+            max_acc = max(max_acc, acc_test)
+
+        LOGGER.debug(f"Erase {args.erease_num} Random Seed {key} max test accuracy is {max_acc * 100}")
 
 
 if __name__ == '__main__':
@@ -176,5 +189,11 @@ if __name__ == '__main__':
     					help='let the input node features be the degree of nodes (heuristics for unlabeled graph)')
     parser.add_argument('--filename', type = str, default = "",
                                         help='output file')
+    parser.add_argument('--erease_num', type = int, default = 1,
+                                        help='erease number of node or edge')
+    parser.add_argument('--latent', action="store_true",
+    					help='use latent graph')
+    parser.add_argument('--additional_flag', action="store_true",
+    					help='use additional prompt information')
     args = parser.parse_args()
     main(args)

@@ -10,7 +10,11 @@ pip install -r requirments.txt
 
 python data_loader.py
 
-python main.py
+python main.py --erease_num 1
+
+python main.py --erease_num 1 --latent
+
+python main.py --erease_num 1 --additional_flag
 ```
 
 # Warning

@@ -11,9 +11,72 @@ CHEKPOINTS = {
 
 ROLE_DESCRIPTION = {
     # TODO : Only return node id need to be erased
-    "NodeEraser": 
+    "NodeEraser_1": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove one node that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+
+    "NodeEraser_2": 
         "You are a graph eraser expert. "
         "And I will give you a graph, please must remove two nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+    
+    "NodeEraser_3": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove three nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+
+    "NodeEraser_4": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove four nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+    
+    "NodeEraser_5": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove five nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+    
+    "NodeEraser_6": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove six nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+    
+    "NodeEraser_7": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove seven nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+
+    "NodeEraser_8": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove eight nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+
+    "NodeEraser_9": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove nine nodes that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11",
+
+    "NodeEraser_10": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove ten nodes that you think it is not important. "
         "I will show you the edge's information and node's lable. "
         "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
         "There is another example: 5, 9, 11",
@@ -32,3 +95,4 @@ ROLE_DESCRIPTION = {
         "The last line of your output contains only the final result without any units, for example: The answer is 140\n"
         "You will be given some examples you may refer to."
 }
+

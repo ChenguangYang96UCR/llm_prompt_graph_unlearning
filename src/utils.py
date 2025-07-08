@@ -171,7 +171,8 @@ def read_data(data_set: str = 'MUTAG'):
         data = json.load(input)
     return data
 
-def construct_prompt_graph(edge : list, nodes_label : dict):
+def construct_prompt_graph(edge : list, nodes_label : dict, face_list : list, additional_flag = False):
+
     prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
     node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
 
@@ -193,6 +194,12 @@ Edge labels:
   3  triple
 
     """
+
+    if additional_flag:
+        additional_prompt = f""" The graph simplicial complex list is : {face_list} .
+        """
+        prompt = additional_prompt + prompt
+
     return prompt
 
 class S2VGraph(object):
@@ -210,10 +217,10 @@ class S2VGraph(object):
         self.node_tags = node_tags
         self.neighbors = {}
         self.node_features = 0
-        self.edge_mat = 0
+        self.edge_mat = torch.LongTensor(0)
         self.max_neighbor = 0
 
-def load_data(data_set:str, degree_as_tag:bool):
+def load_data(data_set:str, degree_as_tag:bool, latent, erease_num):
 
     """
     load data to operate GCN 
@@ -230,11 +237,18 @@ def load_data(data_set:str, degree_as_tag:bool):
     label_dict = {}
     feat_dict = {}
     data_list = ['MUTAG']
-    LOGGER.debug(f'GCN Load {data_set} data')
     assert data_set in data_list , 'Your data set does not exist!'
+
     # TODO: will change this dictionary as result
-    with open(f'result/{data_set}/result.json', 'r') as file:
-        data = json.load(file)
+    if latent:
+        LOGGER.debug(f'GCN Load latent {data_set} data: erase_{erease_num}.json')
+        with open(f'store/{data_set}/erase_{erease_num}.json', 'r') as file:
+            data = json.load(file)
+    else:
+        LOGGER.debug(f'GCN Load latest {data_set} data: result.json')
+        with open(f'result/{data_set}/result.json', 'r') as file:
+            data = json.load(file)
+
     all_nodes = []
     for graph in data:
         g = nx.Graph()
@@ -266,7 +280,8 @@ def load_data(data_set:str, degree_as_tag:bool):
         for node_id, neighbors in g.neighbors.items():
             # g.neighbors[i] = g.neighbors[i]
             degree_list.append(len(neighbors))
-        g.max_neighbor = max(degree_list)
+        if not len(degree_list) == 0:
+            g.max_neighbor = max(degree_list)
 
         # g.label = label_dict[g.label]
 
@@ -274,7 +289,8 @@ def load_data(data_set:str, degree_as_tag:bool):
         edges.extend([[i, j] for j, i in edges])
 
         deg_list = list(dict(g.g.degree(range(len(g.g)))).values())
-        g.edge_mat = torch.LongTensor(edges).transpose(0,1)
+        if not len(degree_list) == 0: 
+            g.edge_mat = torch.LongTensor(edges).transpose(0,1)
 
     if degree_as_tag:
         for g in g_list:
@@ -415,7 +431,51 @@ def delete_node(graph, deleted_node:list):
 
     return new_graph
 
+def get_faces(graph):
 
+    """
+    Returns a list of the faces in an undirected graph
+    """
+
+    #! Construct networkx graph
+    G = nx.Graph()
+    node_tags = []
+    #* Add nodes into networkx graph
+    nodes = graph['node_labels']
+    for node_id, label in nodes.items():
+        G.add_node(int(node_id))
+        node_tags.append(label)
+
+    edges = graph['edges']
+    for edge in edges:
+        G.add_edge(edge[0], edge[1])
+    
+    #! Extract the list of the faces in the graph
+    edges = list(G.edges)
+    faces = []
+    for i in range(len(edges)):
+        for j in range(i+1, len(edges)):
+            e1 = edges[i]
+            e2 = edges[j]
+            if e1[0] == e2[0]:
+                shared = e1[0]
+                e3 = (e1[1], e2[1])
+            elif e1[1] == e2[0]:
+                shared = e1[1]
+                e3 = (e1[0], e2[1])
+            elif e1[0] == e2[1]:
+                shared = e1[0]
+                e3 = (e1[1], e2[0])
+            elif e1[1] == e2[1]:
+                shared = e1[1]
+                e3 = (e1[0], e2[0])
+            else: # edges don't connect
+                continue
+
+            if e3[0] in G[e3[1]]: # if 3rd edge is in graph
+                faces.append(tuple(sorted((shared, *e3))))
+
+    return list(sorted(set(faces)))
 
 
 
