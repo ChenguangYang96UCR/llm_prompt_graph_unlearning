@@ -8,7 +8,7 @@ import json
 import os
 from tqdm import tqdm
 from src.agent import NormAgent
-from src.utils import read_data, construct_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces,LOGGER
+from src.utils import read_data, construct_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge
 from src.models.graphcnn import GraphCNN
 
 
@@ -83,43 +83,83 @@ def test(args, model, device, train_graphs, test_graphs, epoch):
 def main(args):
 
     if not args.latent:
-        #! Load orginal data and initialize agent
-        data = read_data(args.dataset)
-        llm_agnet =  NormAgent(1, f'NodeEraser_{args.erease_num}', 'Openai')
-        os.makedirs(f'result/{args.dataset}/', exist_ok=True)
-        os.makedirs(f'store/{args.dataset}/', exist_ok=True)
-        new_data = []
 
-        #! Ask LLM to delete nodes and store new graph into json file
-        for index,  graph in enumerate(data):
-            #* Construct graph prompt
-            edge = graph['edges']
-            node_lable = graph['node_labels']
-            face_list = get_faces(graph)
-            graph_prompt = construct_prompt_graph(edge, node_lable, face_list, args.additional_flag)
-            LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
-            response =  llm_agnet.get_response(query = graph_prompt)
-            LOGGER.debug(f'Graph {index} LLM Response: {response}')
-            node_list = extract_delete_node(response)
-            LOGGER.debug(f'Nodes need to be deleted: {node_list}')
-            new_graph = delete_node(graph, node_list)
-            new_data.append(new_graph)
-            # if index > 10:
-            #     break
-            
-        with open(f'result/{args.dataset}/result.json', 'w') as output:
-                json.dump(new_data, output)
+        #! 1. Node Erase Type
+        if args.erase_type == 0:
 
-        with open(f'store/{args.dataset}/erase_{args.erease_num}.json', 'w') as output:
-                json.dump(new_data, output)
+            #! Load orginal data and initialize agent
+            data = read_data(args.dataset)
+            llm_agnet =  NormAgent(1, f'NodeEraser_{args.erase_num}', 'Openai')
+            os.makedirs(f'result/{args.dataset}/', exist_ok=True)
+            os.makedirs(f'store/node_erase/{args.dataset}/', exist_ok=True)
+            new_data = []
+
+            #! Ask LLM to delete nodes and store new graph into json file
+            for index,  graph in enumerate(data):
+                #* Construct graph prompt
+                edge = graph['edges']
+                node_lable = graph['node_labels']
+                face_list = get_faces(graph)
+                graph_prompt = construct_prompt_graph(edge, node_lable, face_list, args.additional_flag)
+                LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
+
+                response =  llm_agnet.get_response(query = graph_prompt)
+                LOGGER.debug(f'Graph {index} LLM Response: {response}')
+
+                node_list = extract_delete_node(response)
+                LOGGER.debug(f'Nodes need to be deleted: {node_list}')
+
+                new_graph = delete_node(graph, node_list)
+                new_data.append(new_graph)
+
+            with open(f'result/{args.dataset}/result.json', 'w') as output:
+                    json.dump(new_data, output)
+
+            with open(f'store/node_erase/{args.dataset}/erase_{args.erase_num}.json', 'w') as output:
+                    json.dump(new_data, output)
+        
+        #! 2. Edge Erase Type
+        if args.erase_type == 1:
+
+            #! Load orginal data and initialize agent
+            data = read_data(args.dataset)
+            llm_agnet =  NormAgent(1, f'EdgeEraser_{args.erase_num}', 'Openai')
+            os.makedirs(f'result/{args.dataset}/', exist_ok=True)
+            os.makedirs(f'store/edge_erase/{args.dataset}/', exist_ok=True)
+            new_data = []
+
+            #! Ask LLM to delete nodes and store new graph into json file
+            for index,  graph in enumerate(data):
+                #* Construct graph prompt
+                edge = graph['edges']
+                node_lable = graph['node_labels']
+                face_list = get_faces(graph)
+                graph_prompt = construct_prompt_graph(edge, node_lable, face_list, args.additional_flag)
+                LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
+
+                response =  llm_agnet.get_response(query = graph_prompt)
+                LOGGER.debug(f'Graph {index} LLM Response: {response}')
+
+                edge_list = extract_delete_edge(response)
+                LOGGER.debug(f'Edges need to be deleted: {edge_list}')
+
+                new_graph = delete_edge(graph, edge_list)
+                new_data.append(new_graph)
+
+            with open(f'result/{args.dataset}/result.json', 'w') as output:
+                    json.dump(new_data, output)
+
+            with open(f'store/edge_erase/{args.dataset}/erase_{args.erase_num}.json', 'w') as output:
+                    json.dump(new_data, output)
+        
 
     #! execute the GCN for erased graph
-    graphs, num_classes = load_data(args.dataset, args.degree_as_tag, args.latent, args.erease_num)
+    graphs, num_classes = load_data(args.dataset, args.degree_as_tag, args.latent, args.erase_num, args.erase_type)
     #set up seeds and gpu device
 
     for key in range(5):
         max_acc = 0.0
-        LOGGER.debug(f"******************************************************** Erase {args.erease_num} Random Seed {key} ********************************************************")
+        LOGGER.debug(f"******************************************************** Erase {args.erase_num} Random Seed {key} ********************************************************")
         torch.manual_seed(key)
         np.random.seed(key)   
         device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
@@ -149,7 +189,7 @@ def main(args):
             LOGGER.debug(model.eps)
             max_acc = max(max_acc, acc_test)
 
-        LOGGER.debug(f"Erase {args.erease_num} Random Seed {key} max test accuracy is {max_acc * 100}")
+        LOGGER.debug(f"Erase {args.erase_num} Random Seed {key} max test accuracy is {max_acc * 100}")
 
 
 if __name__ == '__main__':
@@ -189,11 +229,13 @@ if __name__ == '__main__':
     					help='let the input node features be the degree of nodes (heuristics for unlabeled graph)')
     parser.add_argument('--filename', type = str, default = "",
                                         help='output file')
-    parser.add_argument('--erease_num', type = int, default = 1,
+    parser.add_argument('--erase_num', type = int, default = 1,
                                         help='erease number of node or edge')
     parser.add_argument('--latent', action="store_true",
     					help='use latent graph')
     parser.add_argument('--additional_flag', action="store_true",
     					help='use additional prompt information')
+    parser.add_argument('--erase_type', type=int, default=0,
+                        help='erase type in graph, 0: nodes, 1: edges, 2:feature (default: 0)')
     args = parser.parse_args()
     main(args)

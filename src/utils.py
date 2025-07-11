@@ -220,7 +220,7 @@ class S2VGraph(object):
         self.edge_mat = torch.LongTensor(0)
         self.max_neighbor = 0
 
-def load_data(data_set:str, degree_as_tag:bool, latent, erease_num):
+def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type):
 
     """
     load data to operate GCN 
@@ -241,9 +241,14 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erease_num):
 
     # TODO: will change this dictionary as result
     if latent:
-        LOGGER.debug(f'GCN Load latent {data_set} data: erase_{erease_num}.json')
-        with open(f'store/{data_set}/erase_{erease_num}.json', 'r') as file:
-            data = json.load(file)
+        if erase_type == 0:
+            LOGGER.debug(f'GCN Load node erase latent {data_set} data: erase_{erase_num}.json')
+            with open(f'store/node_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                data = json.load(file)
+        if erase_type == 1:
+            LOGGER.debug(f'GCN Load edge erase latent {data_set} data: erase_{erase_num}.json')
+            with open(f'store/edge_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                data = json.load(file)
     else:
         LOGGER.debug(f'GCN Load latest {data_set} data: result.json')
         with open(f'result/{data_set}/result.json', 'r') as file:
@@ -363,6 +368,33 @@ def extract_delete_node(response : str):
     return int_numbers
 
 
+def extract_delete_edge(response : str):
+
+    """
+    extract deleted edge from string
+
+    Args:
+        response (str): llm response
+
+    Returns:
+        list: list of edges which need to be deleted
+    """    
+
+    answer_line = response.split('\n')[-1].strip()[1:-1]
+    result = answer_line.split('], [')
+    edges = []
+    for pair in result:
+        nodes = pair.split(',')
+        edge = []
+        for node in nodes:
+            number = re.findall(r'\d+\.?\d*', node)
+            edge.append(int(number[0]))
+        
+        print(edge)
+        edges.append(edge)
+    return edges
+
+
 def delete_and_reorder_with_mapping(node_dict, to_delete):
 
     """
@@ -411,7 +443,7 @@ def delete_node(graph, deleted_node:list):
     """    
     
     new_graph = {}
-    #! Delete graph first
+    #! Delete edge first
     edges = graph['edges']
     temp_edges = [edge for edge in edges if edge[0] not in deleted_node and edge[1] not in deleted_node]
 
@@ -430,6 +462,34 @@ def delete_node(graph, deleted_node:list):
     new_graph['graph_label'] = graph['graph_label']
 
     return new_graph
+
+def delete_edge(graph, deleted_edges:list):
+
+    """
+    delete edge which need to be deleted
+
+    Args:
+        graph (dict): graph dictionary
+        deleted_edges (list): edges which need to be deleted 
+
+    Returns:
+        dict: new remain graph dictionary
+    """    
+    
+    edges = graph['edges']
+    new_edges = []
+    for edge in edges:
+        delete_flag = False
+        for delete_edge in deleted_edges:
+            if edge[0] == delete_edge[0] and edge[1] == delete_edge[1]:
+                delete_flag = True
+
+        if not delete_flag:
+            new_edges.append(edge)
+    graph['edges'] = new_edges
+
+    return graph
+
 
 def get_faces(graph):
 
