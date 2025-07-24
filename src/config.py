@@ -95,6 +95,62 @@ ROLE_DESCRIPTION = {
         "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
         "There is another example: [[5,9], [9,11]]",
 
+    "EdgeEraser_3": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove three edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
+    "EdgeEraser_4": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove four edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
+    "EdgeEraser_5": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove five edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
+    "EdgeEraser_6": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove six edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
+    "EdgeEraser_7": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove seven edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
+    "EdgeEraser_8": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove eight edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
+    "EdgeEraser_9": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove nine edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
+    "EdgeEraser_10": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove ten edges that you think it is not important. "
+        "I will show you the edge's information and node's lable. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+
     "FeatureEraser": 
         "You are a graph eraser expert. "
         "You will be given a math problem and hints from other agents. "

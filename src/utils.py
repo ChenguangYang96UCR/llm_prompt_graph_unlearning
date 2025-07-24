@@ -41,16 +41,16 @@ def set_logger(log_file = 'multi_agent.log', log_level=logging.DEBUG):
 LOGGER = set_logger(log_level = logging.DEBUG)
 
 
-def mutag_preprocess():
+def dataset_preprocess(dataset : str):
 
     """
-    MUTAG dataset preprocess, write data into json file
+    dataset preprocess, write data into json file
     """    
 
-    os.makedirs('output/MUTAG/', exist_ok=True)
+    os.makedirs(f"output/{dataset}/", exist_ok=True)
     #* Get node number for each graph
     nodes_numbers = []
-    with open('dataset/MUTAG/MUTAG/raw/MUTAG_graph_indicator.txt', 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         start_indicator = 1
         nodes_number = 0
@@ -67,8 +67,8 @@ def mutag_preprocess():
 
     #* Get edge info for each graph
     graphs = []
-    with open('dataset/MUTAG/MUTAG/raw/MUTAG_A.txt', 'r', encoding='utf-8') as file:
-        with open('dataset/MUTAG/MUTAG/raw/MUTAG_edge_labels.txt', 'r', encoding='utf-8') as edge_file:
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_A.txt", 'r', encoding='utf-8') as file:
+        with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_edge_labels.txt", 'r', encoding='utf-8') as edge_file:
             lines = file.readlines()
             edge_lines = edge_file.readlines()
             start_id = 1
@@ -112,7 +112,7 @@ def mutag_preprocess():
     graph_index = 0
     node_id = 1
     start_index = 1
-    with open('dataset/MUTAG/MUTAG/raw/MUTAG_node_labels.txt', 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_labels.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         node_labels = {}
         for line in lines:
@@ -134,7 +134,7 @@ def mutag_preprocess():
 
             
     graph_labels = []
-    with open('dataset/MUTAG/MUTAG/raw/MUTAG_graph_labels.txt', 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         for line in lines:
             graph_label = line.strip()
@@ -148,7 +148,113 @@ def mutag_preprocess():
         data = {"edges": graphs[index], "node_number": node_number, "node_labels": graph_node_labels[index], "graph_label": graph_labels[index]}
         data_list.append(data)
     
-    with open('output/MUTAG/output.json', 'w') as output:
+    with open(f"output/{dataset}/output.json", 'w') as output:
+        json.dump(data_list, output)
+
+
+def dataset_preprocess_without_edge_label(dataset : str):
+
+    """
+    dataset preprocess, write data into json file
+    """    
+
+    os.makedirs(f"output/{dataset}/", exist_ok=True)
+    #* Get node number for each graph
+    nodes_numbers = []
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        start_indicator = 1
+        nodes_number = 0
+        for line in lines: 
+            if int(line.strip()) == start_indicator:
+                nodes_number += 1
+            else:
+                nodes_numbers.append(nodes_number)
+                nodes_number = 1
+                start_indicator = int(line.strip())
+
+     #! add last node number into nodes list
+    nodes_numbers.append(nodes_number)
+
+    #* Get edge info for each graph
+    graphs = []
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_A.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        start_id = 1
+        start_index = 1
+        graph_index = 0
+        graph = []
+        for index, line in enumerate(lines):
+            node_ids = line.strip().split(',')
+            edge = []
+            cross_graph = False
+            for node_id in node_ids:
+                edge.append(int(node_id.strip()) - start_index)
+                if int(node_id.strip()) >= start_id + nodes_numbers[graph_index]:
+                    cross_graph = True
+            edge.append(1)
+
+            if cross_graph:
+                start_id += nodes_numbers[graph_index]
+                start_index += nodes_numbers[graph_index]
+
+                # renew the edge information
+                edge.clear()
+                for node_id in node_ids:
+                    edge.append(int(node_id.strip()) - start_index)
+                edge.append(1)
+
+                graph_index += 1
+                graphs.append(graph.copy())
+                graph.clear()
+                graph.append(edge)
+            else:
+                graph.append(edge)
+        
+        #! add last graph into graph list
+        graphs.append(graph)
+
+    #* Get node label for each node
+    graph_node_number = 0
+    graph_node_labels = []
+    graph_index = 0
+    node_id = 1
+    start_index = 1
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_labels.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        node_labels = {}
+        for line in lines:
+            node_label = line.strip()
+            if graph_node_number >= nodes_numbers[graph_index]:
+               start_index += nodes_numbers[graph_index]
+               graph_index += 1 
+               graph_node_labels.append(node_labels.copy())
+               node_labels.clear()
+               node_labels[node_id - start_index] = int(node_label)
+               graph_node_number = 1
+               node_id += 1
+            else:
+                node_labels[node_id - start_index] = int(node_label)
+                graph_node_number += 1
+                node_id += 1
+
+        graph_node_labels.append(node_labels)
+
+            
+    graph_labels = []
+    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        for line in lines:
+            graph_label = line.strip()
+            graph_labels.append(int(graph_label) - 1)
+            
+    assert len(graphs) == len(nodes_numbers) and len(graphs) == len(graph_labels), "Graph length are different!"
+    data_list = []
+    for index, node_number in enumerate(nodes_numbers):
+        data = {"edges": graphs[index], "node_number": node_number, "node_labels": graph_node_labels[index], "graph_label": graph_labels[index]}
+        data_list.append(data)
+    
+    with open(f"output/{dataset}/output.json", 'w') as output:
         json.dump(data_list, output)
 
 
@@ -164,14 +270,14 @@ def read_data(data_set: str = 'MUTAG'):
         list: json data list
     """    
 
-    data_list = ['MUTAG']
+    data_list = ['MUTAG', 'PROTEINS']
     assert data_set in data_list , 'Your data set does not exist!'
     data_set_root = './output/'
     with open(data_set_root + data_set +'/output.json', 'r') as input:
         data = json.load(input)
     return data
 
-def construct_prompt_graph(edge : list, nodes_label : dict, face_list : list, additional_flag = False):
+def construct_mutag_prompt_graph(edge : list, nodes_label : dict, face_list : list, additional_flag = False):
 
     prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
     node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
@@ -202,6 +308,19 @@ Edge labels:
 
     return prompt
 
+def construct_protein_prompt_graph(edge : list, nodes_label : dict, face_list : list, additional_flag = False):
+
+    prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
+    node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
+    """
+
+    if additional_flag:
+        additional_prompt = f""" The graph simplicial complex list is : {face_list} .
+        """
+        prompt = additional_prompt + prompt
+
+    return prompt
+
 class S2VGraph(object):
     def __init__(self, g, label, node_tags=None, node_features=None):
         '''
@@ -220,7 +339,7 @@ class S2VGraph(object):
         self.edge_mat = torch.LongTensor(0)
         self.max_neighbor = 0
 
-def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type):
+def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, addition_flag):
 
     """
     load data to operate GCN 
@@ -236,19 +355,27 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type):
     g_list = []
     label_dict = {}
     feat_dict = {}
-    data_list = ['MUTAG']
+    data_list = ['MUTAG', 'PROTEINS']
     assert data_set in data_list , 'Your data set does not exist!'
 
     # TODO: will change this dictionary as result
     if latent:
         if erase_type == 0:
             LOGGER.debug(f'GCN Load node erase latent {data_set} data: erase_{erase_num}.json')
-            with open(f'store/node_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
-                data = json.load(file)
+            if addition_flag:
+                with open(f'store/node_erase/{data_set}/sc/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+            else:
+                with open(f'store/node_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
         if erase_type == 1:
             LOGGER.debug(f'GCN Load edge erase latent {data_set} data: erase_{erase_num}.json')
-            with open(f'store/edge_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
-                data = json.load(file)
+            if addition_flag:
+                with open(f'store/edge_erase/{data_set}/sc/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+            else:
+                with open(f'store/edge_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
     else:
         LOGGER.debug(f'GCN Load latest {data_set} data: result.json')
         with open(f'result/{data_set}/result.json', 'r') as file:
@@ -313,13 +440,15 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type):
         g.node_features = torch.zeros(len(g.node_tags), len(tagset))
         g.node_features[range(len(g.node_tags)), [tag2index[tag] for tag in g.node_tags]] = 1
 
+    if data_set == "MUTAG" or data_set == "PROTEINS":
+        graph_type = 2
 
-    print('# classes: %d' % len(label_dict))
+    print('# classes: %d' % graph_type)
     print('# maximum node tag: %d' % len(tagset))
 
     print("# data: %d" % len(g_list))
 
-    return g_list, 2
+    return g_list, graph_type
         
 def separate_data(graph_list, seed, fold_idx):
 
@@ -379,19 +508,20 @@ def extract_delete_edge(response : str):
     Returns:
         list: list of edges which need to be deleted
     """    
-
-    answer_line = response.split('\n')[-1].strip()[1:-1]
-    result = answer_line.split('], [')
+    answer_line = response.split('\n')[-1]
+    match = re.search(r'\[\[.*?\]\]', answer_line)
     edges = []
-    for pair in result:
-        nodes = pair.split(',')
-        edge = []
-        for node in nodes:
-            number = re.findall(r'\d+\.?\d*', node)
-            edge.append(int(number[0]))
-        
-        print(edge)
-        edges.append(edge)
+    if match:
+        result = match.group(0)
+        result = result.split('], [')
+        edges = []
+        for pair in result:
+            nodes = pair.split(',')
+            edge = []
+            for node in nodes:
+                number = re.findall(r'\d+\.?\d*', node)
+                edge.append(int(number[0]))
+            edges.append(edge)
     return edges
 
 
