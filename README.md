@@ -17,7 +17,7 @@ python main.py --erase_num 1 --additional_flag
 
 python main.py --erase_type 1 --erase_num 1
 
-python main.py --erase_type 1 --erase_num 1 --additional_flag
+python main.py --dataset PROTEINS --erase_type 1 --erase_num 1 --additional_flag
 ```
 
 # Warning
