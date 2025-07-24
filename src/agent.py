@@ -40,13 +40,13 @@ class Agent:
             bnb_config = self.create_bnb_config()
             model, tokenizer = self.load_model(LLM[llm_type], bnb_config)
             device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
-            os.makedirs(CHEKPOINTS[agent_type], exist_ok=True)
-            model.save_pretrained(CHEKPOINTS[agent_type], safe_serialization=True)
+            os.makedirs(CHEKPOINTS[llm_type], exist_ok=True)
+            model.save_pretrained(CHEKPOINTS[llm_type], safe_serialization=True)
             self.model = model
 
             # save tokenizer for easy inference
             tokenizer = AutoTokenizer.from_pretrained(LLM[llm_type])
-            tokenizer.save_pretrained(CHEKPOINTS[agent_type])
+            tokenizer.save_pretrained(CHEKPOINTS[llm_type])
             self.tokenizer = tokenizer
 
         #* Call API

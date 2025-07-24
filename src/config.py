@@ -6,7 +6,7 @@ LLM = {
 
 CHEKPOINTS = {
     "Llama3" : "/data/ycg/ucr_work/multi_agent/results/llama/final_merged_checkpoint",
-    "deepseek" : "/data/ycg/ucr_work/multi_agent/results/deepseek/final_merged_checkpoint"
+    "deepseek" : "/data/ycg/deepseek/final_merged_checkpoint"
 }
 
 ROLE_DESCRIPTION = {
