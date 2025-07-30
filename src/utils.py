@@ -5,6 +5,7 @@ import networkx as nx
 import numpy as np
 import torch
 import re
+import gudhi as gd
 from sklearn.model_selection import StratifiedKFold
 
 def set_logger(log_file = 'multi_agent.log', log_level=logging.DEBUG):
@@ -152,10 +153,15 @@ def dataset_preprocess(dataset : str):
         json.dump(data_list, output)
 
 
-def dataset_preprocess_without_edge_label(dataset : str):
+def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool):
 
     """
-    dataset preprocess, write data into json file
+    load dataset which without edge labels
+
+    Args:
+        dataset (str): dataset name
+        graph_label (bool): its graph label is 1/2 or -1/1
+        1/2 for PROTEINS, ENZYMES(True); -1/1 for BZR, COX2(False)
     """    
 
     os.makedirs(f"output/{dataset}/", exist_ok=True)
@@ -246,7 +252,12 @@ def dataset_preprocess_without_edge_label(dataset : str):
         lines = file.readlines()
         for line in lines:
             graph_label = line.strip()
-            graph_labels.append(int(graph_label) - 1)
+            if graph_label_flag:
+                graph_labels.append(int(graph_label) - 1)
+            else:
+                if int(graph_label) == -1:
+                    graph_label = '0'
+                graph_labels.append(int(graph_label))
             
     assert len(graphs) == len(nodes_numbers) and len(graphs) == len(graph_labels), "Graph length are different!"
     data_list = []
@@ -270,14 +281,14 @@ def read_data(data_set: str = 'MUTAG'):
         list: json data list
     """    
 
-    data_list = ['MUTAG', 'PROTEINS']
+    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES']
     assert data_set in data_list , 'Your data set does not exist!'
     data_set_root = './output/'
     with open(data_set_root + data_set +'/output.json', 'r') as input:
         data = json.load(input)
     return data
 
-def construct_mutag_prompt_graph(edge : list, nodes_label : dict, face_list : list, additional_flag = False):
+def construct_mutag_prompt_graph(edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str) :
 
     prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
     node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
@@ -302,22 +313,121 @@ Edge labels:
     """
 
     if additional_flag:
-        additional_prompt = f""" The graph simplicial complex list is : {face_list} .
-        """
-        prompt = additional_prompt + prompt
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
 
     return prompt
 
-def construct_protein_prompt_graph(edge : list, nodes_label : dict, face_list : list, additional_flag = False):
+def construct_protein_prompt_graph(edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str):
 
     prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
     node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
     """
 
     if additional_flag:
-        additional_prompt = f""" The graph simplicial complex list is : {face_list} .
-        """
-        prompt = additional_prompt + prompt
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
+
+    return prompt
+
+def construct_bzr_prompt_graph(edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str):
+
+    prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
+    node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
+    """
+
+    if additional_flag:
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
+
+    return prompt
+
+def construct_cox2_prompt_graph(edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str):
+
+    prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
+    node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
+    """
+
+    if additional_flag:
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
+
+    return prompt
+
+def construct_enzymes_prompt_graph(edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str):
+
+    prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
+    node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
+    """
+
+    if additional_flag:
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
 
     return prompt
 
@@ -339,7 +449,7 @@ class S2VGraph(object):
         self.edge_mat = torch.LongTensor(0)
         self.max_neighbor = 0
 
-def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, addition_flag):
+def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, addition_flag, addition_type):
 
     """
     load data to operate GCN 
@@ -355,7 +465,7 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
     g_list = []
     label_dict = {}
     feat_dict = {}
-    data_list = ['MUTAG', 'PROTEINS']
+    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES']
     assert data_set in data_list , 'Your data set does not exist!'
 
     # TODO: will change this dictionary as result
@@ -363,7 +473,7 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
         if erase_type == 0:
             LOGGER.debug(f'GCN Load node erase latent {data_set} data: erase_{erase_num}.json')
             if addition_flag:
-                with open(f'store/node_erase/{data_set}/sc/erase_{erase_num}.json', 'r') as file:
+                with open(f'store/node_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
                     data = json.load(file)
             else:
                 with open(f'store/node_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
@@ -371,7 +481,7 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
         if erase_type == 1:
             LOGGER.debug(f'GCN Load edge erase latent {data_set} data: erase_{erase_num}.json')
             if addition_flag:
-                with open(f'store/edge_erase/{data_set}/sc/erase_{erase_num}.json', 'r') as file:
+                with open(f'store/edge_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
                     data = json.load(file)
             else:
                 with open(f'store/edge_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
@@ -440,8 +550,11 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
         g.node_features = torch.zeros(len(g.node_tags), len(tagset))
         g.node_features[range(len(g.node_tags)), [tag2index[tag] for tag in g.node_tags]] = 1
 
-    if data_set == "MUTAG" or data_set == "PROTEINS":
+    if data_set == "MUTAG" or data_set == "PROTEINS" or data_set == "BZR" or data_set == "COX2":
         graph_type = 2
+
+    if data_set == "ENZYMES":
+        graph_type = 6
 
     print('# classes: %d' % graph_type)
     print('# maximum node tag: %d' % len(tagset))
@@ -667,8 +780,63 @@ def get_faces(graph):
 
     return list(sorted(set(faces)))
 
+def k_th_order_subgraph(adj_mat, k):
+    output = list()
+    G = nx.from_numpy_array(adj_mat)
+    for i in range(adj_mat.shape[0]):
+        v_labels = [name for name, value in nx.single_source_shortest_path_length(G, i, cutoff=k).items()]
+        tmp_subgraph = adj_mat[np.ix_(v_labels, v_labels)]
+        output.append(tmp_subgraph)
+    return output
 
+def get_tda(graph):
 
+    #! Construct networkx graph
+    G = nx.Graph()
+    node_tags = []
+    #* Add nodes into networkx graph
+    nodes = graph['node_labels']
+    for node_id, label in nodes.items():
+        G.add_node(int(node_id))
+        node_tags.append(label)
+
+    edges = graph['edges']
+    for edge in edges:
+        G.add_edge(edge[0], edge[1])
+
+    #! Get adj matrix and calculate lifespan
+    adj = nx.adjacency_matrix(G)
+    adj_array = adj.toarray().astype(np.float32)
+    # k-hop subgraphs for whole nodes in the network
+    k_hop_subgraphs = k_th_order_subgraph(adj_array, k = 2)
+
+    maxscale = 10 # maxscale can be tuned
+    diffs_list = list()
+    for i in range(len(k_hop_subgraphs)):
+        print(i)
+        k_hop_subgraph = k_hop_subgraphs[i]
+        nodes_degree = np.sum(k_hop_subgraph, axis=1)
+
+        # contruct simplicial complex
+        stb = gd.SimplexTree()
+        (xs, ys) = np.where(np.triu(k_hop_subgraph))
+        for j in range(k_hop_subgraph.shape[0]):
+            stb.insert([j], filtration=-1e10)
+
+        for idx, x in enumerate(xs):
+            stb.insert([x, ys[idx]], filtration=-1e10)
+
+        for j in range(k_hop_subgraph.shape[0]):
+            stb.assign_filtration([j], nodes_degree[j])
+
+        stb.make_filtration_non_decreasing()
+        dgm = stb.persistence()
+        pd = [dgm[i][1] if dgm[i][1][1] < maxscale else (dgm[i][1][0], maxscale) for i in np.arange(0, len(dgm), 1)]
+        diffs = [death - birth for (birth, death) in pd]
+        accumulation = sum(diffs)
+        diffs_list.append(accumulation)
+    
+    return diffs_list
     
 
 

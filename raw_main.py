@@ -1,4 +1,5 @@
 import argparse
+import networkx as nx
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,7 +9,7 @@ import json
 import os
 from tqdm import tqdm
 from src.agent import NormAgent
-from src.utils import read_data, construct_mutag_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge, construct_protein_prompt_graph, construct_bzr_prompt_graph, construct_cox2_prompt_graph, construct_enzymes_prompt_graph, get_tda
+from src.utils import separate_data, LOGGER
 from src.models.graphcnn import GraphCNN
 from scipy import stats
 
@@ -82,141 +83,129 @@ def test(args, model, device, train_graphs, test_graphs, epoch):
 
     return acc_train, acc_test
 
+class S2VGraph(object):
+    def __init__(self, g, label, node_tags=None, node_features=None):
+        '''
+            g: a networkx graph
+            label: an integer graph label
+            node_tags: a list of integer node tags
+            node_features: a torch float tensor, one-hot representation of the tag that is used as input to neural nets
+            edge_mat: a torch long tensor, contain edge list, will be used to create torch sparse tensor
+            neighbors: list of neighbors (without self-loop)
+        '''
+        self.label = label
+        self.g = g
+        self.node_tags = node_tags
+        self.neighbors = {}
+        self.node_features = 0
+        self.edge_mat = torch.LongTensor(0)
+        self.max_neighbor = 0
+
+
+def load_data(data_set:str, degree_as_tag:bool):
+
+    """
+    load data to operate GCN 
+
+    Args:
+        data_set (str): data set name
+        degree_as_tag (bool): determine use degree as tag or not
+
+    Returns:
+        list, type number of graph class: [graph_list, type numbers]
+    """    
+
+    g_list = []
+    label_dict = {}
+    feat_dict = {}
+    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES']
+    assert data_set in data_list , 'Your data set does not exist!'
+
+    LOGGER.debug(f'GCN Load latest {data_set} data: output.json')
+    with open(f'output/{data_set}/output.json', 'r') as file:
+        data = json.load(file)
+    
+    all_nodes = []
+    for graph in data:
+        g = nx.Graph()
+        node_tags = []
+        #* Add nodes into networkx graph
+        nodes = graph['node_labels']
+        for node_id, label in nodes.items():
+            g.add_node(int(node_id))
+            node_tags.append(label)
+            all_nodes.append(node_id)
+
+        edges = graph['edges']
+        for edge in edges:
+            g.add_edge(edge[0], edge[1])
+
+        g_list.append(S2VGraph(g, graph['graph_label'], node_tags))
+    
+    for index, g in enumerate(g_list):
+        for i, j in g.g.edges():
+            if i not in g.neighbors:
+                g.neighbors[i] = [j]
+            else:
+                g.neighbors[i].append(j)
+            if j not in g.neighbors:
+                g.neighbors[j] = [i]
+            else:
+                g.neighbors[j].append(i)
+        degree_list = []
+        for node_id, neighbors in g.neighbors.items():
+            # g.neighbors[i] = g.neighbors[i]
+            degree_list.append(len(neighbors))
+        if not len(degree_list) == 0:
+            g.max_neighbor = max(degree_list)
+
+        # g.label = label_dict[g.label]
+
+        edges = [list(pair) for pair in g.g.edges()]
+        edges.extend([[i, j] for j, i in edges])
+
+        deg_list = list(dict(g.g.degree(range(len(g.g)))).values())
+        if not len(degree_list) == 0: 
+            g.edge_mat = torch.LongTensor(edges).transpose(0,1)
+
+    if degree_as_tag:
+        for g in g_list:
+            g.node_tags = list(dict(g.g.degree).values())
+
+    #Extracting unique tag labels   
+    tagset = set([])
+    for g in g_list:
+        tagset = tagset.union(set(g.node_tags))
+
+    tagset = list(tagset)
+    tag2index = {tagset[i]:i for i in range(len(tagset))}
+
+    for g in g_list:
+        g.node_features = torch.zeros(len(g.node_tags), len(tagset))
+        g.node_features[range(len(g.node_tags)), [tag2index[tag] for tag in g.node_tags]] = 1
+
+    if data_set == "MUTAG" or data_set == "PROTEINS" or data_set == "BZR" or data_set == "COX2":
+        graph_type = 2
+
+    if data_set == "ENZYMES":
+        graph_type = 6
+
+    print('# classes: %d' % graph_type)
+    print('# maximum node tag: %d' % len(tagset))
+
+    print("# data: %d" % len(g_list))
+
+    return g_list, graph_type
+
 def main(args):
-    if not args.latent:
-        latent_string = "False"
-        #! 1. Node Erase Type
-        if args.erase_type == 0:
-            if args.additional_flag:
-                additional_string = "True " + args.addition_type
-            else:
-                additional_string = "False"
-            LOGGER.debug(f"******************************************************** {args.dataset} Erase Node {args.erase_num}, Latent:{latent_string}, Additional: {additional_string} ********************************************************")
-
-            #! Load orginal data and initialize agent
-            data = read_data(args.dataset)
-            llm_agnet =  NormAgent(1, f'NodeEraser_{args.erase_num}', 'Openai')
-            os.makedirs(f'result/{args.dataset}/', exist_ok=True)
-            if args.additional_flag:
-                os.makedirs(f'store/node_erase/{args.dataset}/{args.addition_type}/', exist_ok=True)
-            else:
-                os.makedirs(f'store/node_erase/{args.dataset}/', exist_ok=True)
-            new_data = []
-
-            #! Ask LLM to delete nodes and store new graph into json file
-            for index,  graph in enumerate(data):
-                #* Construct graph prompt
-                edge = graph['edges']
-                node_lable = graph['node_labels']
-                face_list = get_faces(graph)
-                diff_list = get_tda(graph)
-
-                if args.dataset == "MUTAG":
-                    graph_prompt = construct_mutag_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "PROTEINS":
-                    graph_prompt = construct_protein_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "BZR":
-                    graph_prompt = construct_bzr_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "COX2":
-                    graph_prompt = construct_cox2_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "ENZYMES":
-                    graph_prompt = construct_enzymes_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-
-                LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
-
-                response =  llm_agnet.get_response(query = graph_prompt)
-                LOGGER.debug(f'Graph {index} LLM Response: {response}')
-
-                node_list = extract_delete_node(response)
-                LOGGER.debug(f'Nodes need to be deleted: {node_list}')
-
-                new_graph = delete_node(graph, node_list)
-                new_data.append(new_graph)
-
-            with open(f'result/{args.dataset}/result.json', 'w') as output:
-                    json.dump(new_data, output)
-            
-            if args.additional_flag:
-                with open(f'store/node_erase/{args.dataset}/{args.addition_type}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
-            else:
-                with open(f'store/node_erase/{args.dataset}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
-        
-        #! 2. Edge Erase Type
-        if args.erase_type == 1:
-            if args.additional_flag:
-                additional_string = "True " + args.addition_type
-            else:
-                additional_string = "False"
-            LOGGER.debug(f"******************************************************** {args.dataset} Erase Edge {args.erase_num}, Latent:{latent_string}, Additional: {additional_string} ********************************************************")
-
-            #! Load orginal data and initialize agent
-            data = read_data(args.dataset)
-            llm_agnet =  NormAgent(1, f'EdgeEraser_{args.erase_num}', 'Openai')
-            os.makedirs(f'result/{args.dataset}/', exist_ok=True)
-            if args.additional_flag:
-                os.makedirs(f'store/edge_erase/{args.dataset}/{args.addition_type}/', exist_ok=True)
-            else:
-                os.makedirs(f'store/edge_erase/{args.dataset}/', exist_ok=True)
-            new_data = []
-
-            #! Ask LLM to delete nodes and store new graph into json file
-            for index,  graph in enumerate(data):
-                #* Construct graph prompt
-                edge = graph['edges']
-                node_lable = graph['node_labels']
-                face_list = get_faces(graph)
-                diff_list = get_tda(graph)
-
-                if args.dataset == "MUTAG":
-                    graph_prompt = construct_mutag_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "PROTEINS":
-                    graph_prompt = construct_protein_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "BZR":
-                    graph_prompt = construct_bzr_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "COX2":
-                    graph_prompt = construct_cox2_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                if args.dataset == "ENZYMES":
-                    graph_prompt = construct_enzymes_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-                LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
-
-                response =  llm_agnet.get_response(query = graph_prompt)
-                LOGGER.debug(f'Graph {index} LLM Response: {response}')
-
-                edge_list = extract_delete_edge(response)
-                LOGGER.debug(f'Edges need to be deleted: {edge_list}')
-
-                new_graph = delete_edge(graph, edge_list)
-                new_data.append(new_graph)
-
-            with open(f'result/{args.dataset}/result.json', 'w') as output:
-                    json.dump(new_data, output)
-
-            if args.additional_flag:
-                with open(f'store/edge_erase/{args.dataset}/{args.addition_type}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
-            else:
-                with open(f'store/edge_erase/{args.dataset}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
-
     #! execute the GCN for erased graph
-    graphs, num_classes = load_data(args.dataset, args.degree_as_tag, args.latent, args.erase_num, args.erase_type, args.additional_flag, args.addition_type)
+    graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
     #set up seeds and gpu device
 
-    if args.erase_type == 0: 
-        type_tring = " Node "
-    if args.erase_type == 1:
-        type_tring = " Edge " 
-
-    if args.additional_flag:
-        additional_string = "True " + args.addition_type
-    else:
-        additional_string = "False"
     max_acc_list = []
     for key in range(10):
         max_acc = 0.0
-        LOGGER.debug(f"******************************************************** {args.dataset} Erase {type_tring} {args.erase_num} Random Seed {key}, Additional: {additional_string} ********************************************************")
+        LOGGER.debug(f"******************************************************** {args.dataset} Random Seed {key}********************************************************")
         torch.manual_seed(args.seed)
         np.random.seed(args.seed)   
         device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
@@ -255,7 +244,7 @@ def main(args):
     mean = np.mean(max_acc_list)
     se = stats.sem(max_acc_list)
     acc += f"& {mean}$\pm${se}"
-    LOGGER.debug(f"Erase {args.erase_num} final result: {acc}")
+    LOGGER.debug(f"Erase {args.erase_num} Fold Index {key} final result: {acc}")
 
 if __name__ == '__main__':
 
