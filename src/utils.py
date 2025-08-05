@@ -7,6 +7,7 @@ import torch
 import re
 import gudhi as gd
 from sklearn.model_selection import StratifiedKFold
+from src.topology import edge_weight_func, k_th_order_weighted_subgraph, simplicial_complex_dgm
 
 def set_logger(log_file = 'multi_agent.log', log_level=logging.DEBUG):
 
@@ -246,7 +247,37 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
 
         graph_node_labels.append(node_labels)
 
-            
+    #* Get node attribute for each node
+    if os.path.exists(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_attributes.txt"):
+        graph_node_number = 0
+        graph_node_attributes = []
+        graph_index = 0
+        node_id = 1
+        start_index = 1
+        with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_attributes.txt", 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+            node_attrs = {}
+            for line in lines:
+                numbers = line.split(',')
+                node_attribute = []
+                for number in numbers:
+                    node_attribute.append(float(number.strip()))
+                    
+                if graph_node_number >= nodes_numbers[graph_index]:
+                    start_index += nodes_numbers[graph_index]
+                    graph_index += 1 
+                    graph_node_attributes.append(node_attrs.copy())
+                    node_attrs.clear()
+                    node_attrs[node_id - start_index] = node_attribute
+                    graph_node_number = 1
+                    node_id += 1
+                else:
+                    node_attrs[node_id - start_index] = node_attribute
+                    graph_node_number += 1
+                    node_id += 1
+
+            graph_node_attributes.append(node_attrs)
+
     graph_labels = []
     with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
@@ -262,7 +293,7 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
     assert len(graphs) == len(nodes_numbers) and len(graphs) == len(graph_labels), "Graph length are different!"
     data_list = []
     for index, node_number in enumerate(nodes_numbers):
-        data = {"edges": graphs[index], "node_number": node_number, "node_labels": graph_node_labels[index], "graph_label": graph_labels[index]}
+        data = {"edges": graphs[index], "node_number": node_number, "node_labels": graph_node_labels[index], "graph_label": graph_labels[index], "node_attributes": graph_node_attributes[index]}
         data_list.append(data)
     
     with open(f"output/{dataset}/output.json", 'w') as output:
@@ -471,23 +502,25 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
     # TODO: will change this dictionary as result
     if latent:
         if erase_type == 0:
-            LOGGER.debug(f'GCN Load node erase latent {data_set} data: erase_{erase_num}.json')
             if addition_flag:
+                LOGGER.debug(f'GCN Load node erase latent {data_set} data: store/node_erase/{data_set}/{addition_type}/erase_{erase_num}.json')
                 with open(f'store/node_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
                     data = json.load(file)
             else:
+                LOGGER.debug(f'GCN Load node erase latent {data_set} data: store/node_erase/{data_set}/erase_{erase_num}.json')
                 with open(f'store/node_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
                     data = json.load(file)
         if erase_type == 1:
-            LOGGER.debug(f'GCN Load edge erase latent {data_set} data: erase_{erase_num}.json')
             if addition_flag:
+                LOGGER.debug(f'GCN Load edge erase latent {data_set} data: store/edge_erase/{data_set}/{addition_type}/erase_{erase_num}.json')
                 with open(f'store/edge_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
                     data = json.load(file)
             else:
+                LOGGER.debug(f'GCN Load edge erase latent {data_set} data: store/edge_erase/{data_set}/erase_{erase_num}.json')
                 with open(f'store/edge_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
                     data = json.load(file)
     else:
-        LOGGER.debug(f'GCN Load latest {data_set} data: result.json')
+        LOGGER.debug(f'GCN Load latest {data_set} data: result/{data_set}/result.json')
         with open(f'result/{data_set}/result.json', 'r') as file:
             data = json.load(file)
 
@@ -838,7 +871,45 @@ def get_tda(graph):
     
     return diffs_list
     
+def power_tda(graph):
+    #! Construct networkx graph
+    G = nx.Graph()
+    node_tags = []
+    #* Add nodes into networkx graph
+    nodes = graph['node_labels']
+    for node_id, label in nodes.items():
+        G.add_node(int(node_id))
+        node_tags.append(label)
 
+    edges = graph['edges']
+    for edge in edges:
+        G.add_edge(edge[0], edge[1])
+
+    node_attributes = graph['node_attributes']
+    node_attributes_array = np.array(list(node_attributes.values()))
+    #! Get adj matrix and calculate lifespan
+    adj = nx.adjacency_matrix(G)
+    adj_array = adj.toarray().astype(np.float32)
+    # power filtraion, i.e., topological distance
+    # To get node_similarity_matrix.npy, please run edge_weight_func on node feature matrix
+    node_similarity_matrix = edge_weight_func(node_attributes_array)
+    k_hop = 3
+    k_hop_subgraphs = k_th_order_weighted_subgraph(adj_mat = adj_array, w_adj_mat= node_similarity_matrix, k = k_hop)
+
+    power_filtration_dgms = list()
+    diffs_list = list()
+    for i in range(len(k_hop_subgraphs)):
+        power_filtration_dgm = simplicial_complex_dgm(k_hop_subgraphs[i])
+        if power_filtration_dgm.size == 0:
+            power_filtration_dgms.append(np.array([]))
+            diffs_list.append(float(0))
+        else:
+            power_filtration_dgms.append(power_filtration_dgm)
+            diffs = [death - birth for (birth, death) in power_filtration_dgm]
+            accumulation = sum(diffs)
+            diffs_list.append(round(float(accumulation), 2))
+    # power_dgms = np.array(power_filtration_dgms, dtype=object)
+    return diffs_list
 
 
 

@@ -7,6 +7,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed, Trainer,
 from src.config import LLM, CHEKPOINTS, ROLE_DESCRIPTION
 from src.utils import LOGGER
 import openai
+import time
 
 
 login(token="")
@@ -140,14 +141,19 @@ class Agent:
     
     def ask_openai(self, question, api_key):
         openai.api_key = api_key
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",  # Updated to use the latest and more advanced model
-            messages=[
-                {"role": "user", "content": question}
-            ],
-            temperature=0.2
-        )
-        
+        for retry in range(5):
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-4o",  # Updated to use the latest and more advanced model
+                    messages=[
+                        {"role": "user", "content": question}
+                    ],
+                    temperature=0.2
+                )
+                break
+            except openai.error.ServiceUnavailableError:
+                wait_time = 2 ** retry
+                time.sleep(wait_time)
         # st.write(response)
         result = response['choices'][0]['message']['content'].strip()
         # st.write("**Raw Model Response for Classification:**", raw_category) # make title as bold
