@@ -8,7 +8,7 @@ import json
 import os
 from tqdm import tqdm
 from src.agent import NormAgent
-from src.utils import read_data, construct_mutag_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge, construct_protein_prompt_graph, construct_bzr_prompt_graph, construct_cox2_prompt_graph, construct_enzymes_prompt_graph, get_tda
+from src.utils import read_data, construct_mutag_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge, construct_protein_prompt_graph, construct_bzr_prompt_graph, construct_cox2_prompt_graph, construct_enzymes_prompt_graph, get_tda, power_tda
 from src.models.graphcnn import GraphCNN
 from scipy import stats
 
@@ -109,7 +109,7 @@ def main(args):
                 edge = graph['edges']
                 node_lable = graph['node_labels']
                 face_list = get_faces(graph)
-                diff_list = get_tda(graph)
+                diff_list = power_tda(graph)
 
                 if args.dataset == "MUTAG":
                     graph_prompt = construct_mutag_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
@@ -167,7 +167,7 @@ def main(args):
                 edge = graph['edges']
                 node_lable = graph['node_labels']
                 face_list = get_faces(graph)
-                diff_list = get_tda(graph)
+                diff_list = power_tda(graph)
 
                 if args.dataset == "MUTAG":
                     graph_prompt = construct_mutag_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
@@ -216,7 +216,7 @@ def main(args):
     max_acc_list = []
     for key in range(10):
         max_acc = 0.0
-        LOGGER.debug(f"******************************************************** {args.dataset} Erase {type_tring} {args.erase_num} Random Seed {key}, Additional: {additional_string} ********************************************************")
+        LOGGER.debug(f"******************************************************** {args.dataset} Erase {type_tring} {args.erase_num} Random Seed {key}, Additional: {additional_string}, lr: {args.lr}, epoch: {args.epochs}, batch: {args.batch_size} ********************************************************")
         torch.manual_seed(args.seed)
         np.random.seed(args.seed)   
         device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")

@@ -4,7 +4,7 @@ import os
 import re
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed, Trainer, TrainingArguments, BitsAndBytesConfig, \
     DataCollatorForLanguageModeling, Trainer, TrainingArguments
-from src.config import LLM, CHEKPOINTS, ROLE_DESCRIPTION
+from src.config import LLM, CHEKPOINTS, ROLE_DESCRIPTION, WEBKG_ROLE_DESCRIPTION
 from src.utils import LOGGER
 import openai
 import time
@@ -139,6 +139,26 @@ class Agent:
         model_answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
         return model_answer
     
+    def webkg_ask_openai(self, messages_list, api_key):
+        messages = []
+        for message in messages_list:
+            messages.append({"role": "user", "content": f"{message}\n"})
+        messages.append({"role": "user", "content": "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan, and please only return the list of edges that need to be deleted on the last line. "})
+        openai.api_key = api_key
+        for retry in range(5):
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-4o",  # Updated to use the latest and more advanced model
+                    messages=messages,
+                    temperature=0.2
+                )
+                break
+            except openai.error.ServiceUnavailableError:
+                wait_time = 2 ** retry
+                time.sleep(wait_time)
+        result = response['choices'][0]['message']['content'].strip()
+        return result
+
     def ask_openai(self, question, api_key):
         openai.api_key = api_key
         for retry in range(5):
@@ -216,6 +236,96 @@ class NormAgent(Agent):
                 response = response.split("</think>")[-1]
         else:
             response = self.ask_openai(prompt, self.openai_key)
+
+        # update agent memory
+        self.memory.append(response)
+        return response
+    
+    def get_agent_type(self) -> str :
+        
+        """
+        Get agent type
+
+        Returns:
+            str: agent type
+        """
+
+        return self.agent_type
+
+class WebKGAgent(Agent):
+    """
+    WebKGAgent agent class
+
+    Args:
+        Agent (class): base agent class
+
+    Example:
+        agent = WebKGAgent(1, 'MathSolver', 'deepseek')
+        response = agent.get_response(query)
+    """
+
+    def __init__(self, agent_id, agent_type, llm_type):
+
+        """
+        WebKGAgent agent class init function 
+
+        Args:
+            agent_id (int): agent id
+            agent_type (str): agent type
+            llm_type (str): llm name, such as (Llama3, deepseek)
+        """
+        super().__init__(agent_id, agent_type, llm_type)
+        self.agent_prompt = f"{WEBKG_ROLE_DESCRIPTION[self.agent_type]}\n"
+        self.openai_key = ''
+
+    def get_response(self, edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str) -> str:  
+
+        Edge_info = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge} . Please remember these information. """
+        Node_info = f""" Node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} . Please remember these information."""
+
+        if additional_flag:
+            sc_prompt = f""" And The graph simplicial complex list is : {face_list} .
+                """
+            
+            diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+                List: {diff_list}
+                """
+
+            if addition_type == 'sc':
+                addition_prompt = sc_prompt
+            
+            if addition_type == 'tda':
+                addition_prompt = diff_prompt
+
+            if addition_type == 'combine':
+                addition_prompt = sc_prompt + diff_prompt
+        
+        LOGGER.debug(f'agent_{self.agent_id}({self.agent_type}) generated response.')
+
+        #* Local model in server
+        edge_prompt = Edge_info
+        node_prompt = f"{self.agent_prompt}\n" + f"{Node_info}"
+        Final_prompt = f" I've provided all the necessary information. Please complete the analysis."
+        if self.llm_type in ['Llama3', 'deepseek']:
+            messages_list = []
+            response = self.ask_model(self.model, node_prompt, self.tokenizer) 
+            if additional_flag:
+                response = self.ask_model(self.model, edge_prompt + addition_prompt + Final_prompt, self.tokenizer)        
+            else:
+                response = self.ask_model(self.model, edge_prompt + Final_prompt, self.tokenizer)     
+
+            if self.llm_type == 'deepseek':
+                response = response.split("</think>")[-1]
+        else:
+            messages_list = []
+            if additional_flag:
+                messages_list.append(node_prompt)
+                messages_list.append(edge_prompt + addition_prompt + Final_prompt)
+                response = self.webkg_ask_openai(messages_list, self.openai_key)
+            else:
+                messages_list.append(node_prompt)
+                messages_list.append(edge_prompt + Final_prompt)
+                response = self.webkg_ask_openai(messages_list, self.openai_key)
 
         # update agent memory
         self.memory.append(response)

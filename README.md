@@ -39,3 +39,9 @@ If you find that you can not run this script, it show you this warning `Permit D
 ```shell
 chmod +x run.sh
 ```
+
+# WebKG dataset execute
+
+```shell
+python WebKG_main.py --dataset cornell --hidden_channels 64 --epochs 1000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.5 --ln --rand_split
+```

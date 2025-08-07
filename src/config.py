@@ -16,35 +16,40 @@ ROLE_DESCRIPTION = {
         "And I will give you a graph, please must remove one node that you think it is not important. "
         "I will show you the edge's information and node's lable. "
         "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
-        "There is another example: 5, 9, 11",
+        "There is another example: 5, 9, 11"
+        "Let's think the result step by step.",
 
     "NodeEraser_2": 
         "You are a graph eraser expert. "
         "And I will give you a graph, please must remove two nodes that you think it is not important. "
         "I will show you the edge's information and node's lable. "
         "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
-        "There is another example: 5, 9, 11",
+        "There is another example: 5, 9, 11"
+        "Let's think the result step by step.",
     
     "NodeEraser_3": 
         "You are a graph eraser expert. "
         "And I will give you a graph, please must remove three nodes that you think it is not important. "
         "I will show you the edge's information and node's lable. "
         "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
-        "There is another example: 5, 9, 11",
+        "There is another example: 5, 9, 11"
+        "Let's think the result step by step.",
 
     "NodeEraser_4": 
         "You are a graph eraser expert. "
         "And I will give you a graph, please must remove four nodes that you think it is not important. "
         "I will show you the edge's information and node's lable. "
         "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
-        "There is another example: 5, 9, 11",
+        "There is another example: 5, 9, 11"
+        "Let's think the result step by step.",
     
     "NodeEraser_5": 
         "You are a graph eraser expert. "
         "And I will give you a graph, please must remove five nodes that you think it is not important. "
         "I will show you the edge's information and node's lable. "
         "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
-        "There is another example: 5, 9, 11",
+        "There is another example: 5, 9, 11"
+        "Let's think the result step by step.",
     
     "NodeEraser_6": 
         "You are a graph eraser expert. "
@@ -159,3 +164,21 @@ ROLE_DESCRIPTION = {
         "You will be given some examples you may refer to."
 }
 
+# "Let's think step by step."
+
+WEBKG_ROLE_DESCRIPTION = {
+    "NodeEraser_1": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove one node that you think it is not important. "
+        "I will seperately show you the edge's information and node's lable and may contain further details. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11"
+        "Let's think the result step by step.",
+
+    "EdgeEraser_1": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove 5%% edges that you think it is not important. "
+        "I will seperately show you the edge's information and node's lable and may contain further details. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+}

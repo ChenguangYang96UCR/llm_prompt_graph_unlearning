@@ -6,8 +6,94 @@ import numpy as np
 import torch
 import re
 import gudhi as gd
+import csv
 from sklearn.model_selection import StratifiedKFold
+import shutil
 from src.topology import edge_weight_func, k_th_order_weighted_subgraph, simplicial_complex_dgm
+
+def rand_train_test_idx(label, train_prop=0.5, valid_prop=0.25, ignore_negative=True):
+    """randomly splits label into train/valid/test splits"""
+    if ignore_negative:
+        labeled_nodes = torch.where(label != -1)[0]
+    else:
+        labeled_nodes = label
+
+    n = labeled_nodes.shape[0]
+    train_num = int(n * train_prop)
+    valid_num = int(n * valid_prop)
+
+    perm = torch.as_tensor(np.random.permutation(n))
+
+    train_indices = perm[:train_num]
+    val_indices = perm[train_num : train_num + valid_num]
+    test_indices = perm[train_num + valid_num :]
+
+    if not ignore_negative:
+        return train_indices, val_indices, test_indices
+
+    train_idx = labeled_nodes[train_indices]
+    valid_idx = labeled_nodes[val_indices]
+    test_idx = labeled_nodes[test_indices]
+
+    return train_idx, valid_idx, test_idx
+
+class NCDataset(object):
+    def __init__(self, name):
+        """
+        based off of ogb NodePropPredDataset
+        https://github.com/snap-stanford/ogb/blob/master/ogb/nodeproppred/dataset.py
+        Gives torch tensors instead of numpy arrays
+            - name (str): name of the dataset
+            - root (str): root directory to store the dataset folder
+            - meta_dict: dictionary that stores all the meta-information about data. Default is None,
+                    but when something is passed, it uses its information. Useful for debugging for external contributers.
+
+        Usage after construction:
+
+        split_idx = dataset.get_idx_split()
+        train_idx, valid_idx, test_idx = split_idx["train"], split_idx["valid"], split_idx["test"]
+        graph, label = dataset[0]
+
+        Where the graph is a dictionary of the following form:
+        dataset.graph = {'edge_index': edge_index,
+                         'edge_feat': None,
+                         'node_feat': node_feat,
+                         'num_nodes': num_nodes}
+        For additional documentation, see OGB Library-Agnostic Loader https://ogb.stanford.edu/docs/nodeprop/
+
+        """
+
+        self.name = name  # original name, e.g., ogbn-proteins
+        self.graph = {}
+        self.label = None
+
+    def get_idx_split(self, split_type='random', train_prop=.5, valid_prop=.25):
+        """
+        train_prop: The proportion of dataset for train split. Between 0 and 1.
+        valid_prop: The proportion of dataset for validation split. Between 0 and 1.
+        """
+
+        if split_type == 'random':
+            ignore_negative = False if self.name == 'ogbn-proteins' else True
+            train_idx, valid_idx, test_idx = rand_train_test_idx(
+                self.label, train_prop=train_prop, valid_prop=valid_prop, ignore_negative=ignore_negative)
+            split_idx = {'train': train_idx,
+                         'valid': valid_idx,
+                         'test': test_idx}
+
+        return split_idx
+
+    def __getitem__(self, idx):
+        assert idx == 0, 'This dataset has only one graph'
+        return self.graph, self.label
+
+    def __len__(self):
+        return 1
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, len(self))
+
+
 
 def set_logger(log_file = 'multi_agent.log', log_level=logging.DEBUG):
 
@@ -52,7 +138,7 @@ def dataset_preprocess(dataset : str):
     os.makedirs(f"output/{dataset}/", exist_ok=True)
     #* Get node number for each graph
     nodes_numbers = []
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         start_indicator = 1
         nodes_number = 0
@@ -69,8 +155,8 @@ def dataset_preprocess(dataset : str):
 
     #* Get edge info for each graph
     graphs = []
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_A.txt", 'r', encoding='utf-8') as file:
-        with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_edge_labels.txt", 'r', encoding='utf-8') as edge_file:
+    with open(f"dataset/{dataset}/raw/{dataset}_A.txt", 'r', encoding='utf-8') as file:
+        with open(f"dataset/{dataset}/raw/{dataset}_edge_labels.txt", 'r', encoding='utf-8') as edge_file:
             lines = file.readlines()
             edge_lines = edge_file.readlines()
             start_id = 1
@@ -114,7 +200,7 @@ def dataset_preprocess(dataset : str):
     graph_index = 0
     node_id = 1
     start_index = 1
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_labels.txt", 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/raw/{dataset}_node_labels.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         node_labels = {}
         for line in lines:
@@ -136,7 +222,7 @@ def dataset_preprocess(dataset : str):
 
             
     graph_labels = []
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         for line in lines:
             graph_label = line.strip()
@@ -168,7 +254,7 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
     os.makedirs(f"output/{dataset}/", exist_ok=True)
     #* Get node number for each graph
     nodes_numbers = []
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         start_indicator = 1
         nodes_number = 0
@@ -185,7 +271,7 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
 
     #* Get edge info for each graph
     graphs = []
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_A.txt", 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/raw/{dataset}_A.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         start_id = 1
         start_index = 1
@@ -227,7 +313,7 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
     graph_index = 0
     node_id = 1
     start_index = 1
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_labels.txt", 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/raw/{dataset}_node_labels.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         node_labels = {}
         for line in lines:
@@ -248,13 +334,13 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
         graph_node_labels.append(node_labels)
 
     #* Get node attribute for each node
-    if os.path.exists(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_attributes.txt"):
+    if os.path.exists(f"dataset/{dataset}/raw/{dataset}_node_attributes.txt"):
         graph_node_number = 0
         graph_node_attributes = []
         graph_index = 0
         node_id = 1
         start_index = 1
-        with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_node_attributes.txt", 'r', encoding='utf-8') as file:
+        with open(f"dataset/{dataset}/raw/{dataset}_node_attributes.txt", 'r', encoding='utf-8') as file:
             lines = file.readlines()
             node_attrs = {}
             for line in lines:
@@ -279,7 +365,7 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
             graph_node_attributes.append(node_attrs)
 
     graph_labels = []
-    with open(f"dataset/{dataset}/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
+    with open(f"dataset/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
         lines = file.readlines()
         for line in lines:
             graph_label = line.strip()
@@ -300,6 +386,44 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
         json.dump(data_list, output)
 
 
+def WebKB_preprocess(dataset : str):
+    os.makedirs(f"output/{dataset}/", exist_ok=True)
+
+    graph = []
+    with open(f"dataset/{dataset}/raw/out1_graph_edges.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        for index, line in enumerate(lines):
+            #! skip first row (column name)
+            if index == 0:
+                continue
+            edge = line.strip('\n').split('\t')
+            node_list = []
+            for node in edge:
+                node_list.append(int(node))
+            node_list.append(1)
+            graph.append(node_list)
+
+    nodes_attribute = {}
+    nodes_label = {}
+    with open(f"dataset/{dataset}/raw/out1_node_feature_label.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        for index, line in enumerate(lines):
+            #! skip first row (column name)
+            if index == 0:
+                continue
+            node_info = line.strip('\n').split('\t')
+            node_id = node_info[0]
+            node_attribute = node_info[1]
+            node_label = node_info[2]
+            data_list = list(map(int, node_attribute.split(',')))
+            nodes_attribute[node_id] = data_list
+            nodes_label[node_id] = int(node_label)
+
+    assert len(nodes_attribute) == len(nodes_label), "Node number is not equal"
+    data = {"edges": graph, "node_number": len(nodes_label), "node_labels": nodes_label, "node_attributes": nodes_attribute}
+    with open(f"output/{dataset}/output.json", 'w') as output:
+        json.dump(data, output)
+
 def read_data(data_set: str = 'MUTAG'):
 
     """
@@ -312,7 +436,7 @@ def read_data(data_set: str = 'MUTAG'):
         list: json data list
     """    
 
-    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES']
+    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES', 'cornell', 'wisconsin', 'texas']
     assert data_set in data_list , 'Your data set does not exist!'
     data_set_root = './output/'
     with open(data_set_root + data_set +'/output.json', 'r') as input:
@@ -462,6 +586,31 @@ def construct_enzymes_prompt_graph(edge : list, nodes_label : dict, face_list : 
 
     return prompt
 
+def construct_webkb_prompt_graph(edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str):
+
+    prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
+    node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
+    """
+
+    if additional_flag:
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
+
+    return prompt
+
 class S2VGraph(object):
     def __init__(self, g, label, node_tags=None, node_features=None):
         '''
@@ -479,6 +628,106 @@ class S2VGraph(object):
         self.node_features = 0
         self.edge_mat = torch.LongTensor(0)
         self.max_neighbor = 0
+
+
+
+def load_wiki_new(data_dir, name):
+    path= f'{data_dir}/geom-gcn/{name}/{name}_filtered.npz'
+    data=np.load(path)
+    # lst=data.files
+    # for item in lst:
+    #     print(item)
+    node_feat=data['node_features'] # unnormalized
+    labels=data['node_labels']
+    edges=data['edges'] #(E, 2)
+    edge_index=edges.T
+
+    dataset = NCDataset(name)
+
+    edge_index=torch.as_tensor(edge_index)
+    node_feat=torch.as_tensor(node_feat)
+    labels=torch.as_tensor(labels)
+
+    dataset.graph = {'edge_index': edge_index,
+                     'node_feat': node_feat,
+                     'edge_feat': None,
+                     'num_nodes': node_feat.shape[0]}
+    dataset.label = labels
+
+    return dataset
+
+def load_webkg_dataset(data_set:str, latent, erase_num, erase_type, addition_flag, addition_type):
+
+    """
+    load data to operate mpnns 
+
+    Args:
+        data_set (str): data set name
+        degree_as_tag (bool): determine use degree as tag or not
+
+    Returns:
+        list, type number of graph class: [graph_list, type numbers]
+    """    
+
+    data_list = ['cornell', 'wisconsin', 'texas']
+    assert data_set in data_list , 'Your data set does not exist!'
+
+    if latent:
+        if erase_type == 0:
+            if addition_flag:
+                LOGGER.debug(f'GCN Load node erase latent {data_set} data: store/node_erase/{data_set}/{addition_type}/erase_{erase_num}.json')
+                with open(f'store/node_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+            else:
+                LOGGER.debug(f'GCN Load node erase latent {data_set} data: store/node_erase/{data_set}/erase_{erase_num}.json')
+                with open(f'store/node_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+        if erase_type == 1:
+            if addition_flag:
+                LOGGER.debug(f'GCN Load edge erase latent {data_set} data: store/edge_erase/{data_set}/{addition_type}/erase_{erase_num}.json')
+                with open(f'store/edge_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+            else:
+                LOGGER.debug(f'GCN Load edge erase latent {data_set} data: store/edge_erase/{data_set}/erase_{erase_num}.json')
+                with open(f'store/edge_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+    else:
+        LOGGER.debug(f'GCN Load latest {data_set} data: result/{data_set}/result.json')
+        with open(f'result/{data_set}/result.json', 'r') as file:
+            data = json.load(file)
+
+    data = data[0]
+    edges = data['edges']
+    source_list = []
+    target_list = []
+    for edge in edges:
+        source_list.append(edge[0])
+        target_list.append(edge[1])
+    edge_index = []
+    edge_index.append(source_list)
+    edge_index.append(target_list)
+
+    nodes = data['node_labels']
+    labels = [None] * data['node_number']
+    for node_id, label in nodes.items():
+        labels[int(node_id)] = int(label)
+
+    node_attribute = data['node_attributes']
+    node_feat = np.array(list(node_attribute.values()))
+
+    dataset = NCDataset(data_set)
+
+    edge_index=torch.as_tensor(edge_index)
+    node_feat=torch.as_tensor(node_feat).to(torch.float)
+    labels=torch.as_tensor(labels)
+
+    dataset.graph = {'edge_index': edge_index,
+                     'node_feat': node_feat,
+                     'edge_feat': None,
+                     'num_nodes': node_feat.shape[0]}
+    dataset.label = labels
+    
+    return dataset
 
 def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, addition_flag, addition_type):
 
@@ -499,7 +748,6 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
     data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES']
     assert data_set in data_list , 'Your data set does not exist!'
 
-    # TODO: will change this dictionary as result
     if latent:
         if erase_type == 0:
             if addition_flag:
