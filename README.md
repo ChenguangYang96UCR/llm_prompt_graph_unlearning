@@ -44,4 +44,6 @@ chmod +x run.sh
 
 ```shell
 python WebKG_main.py --dataset cornell --hidden_channels 64 --epochs 1000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.5 --ln --rand_split
+python WebKG_main.py --dataset wisconsin --hidden_channels 64 --epochs 1000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.5 --ln --rand_split
+python WebKG_main.py --dataset texas --hidden_channels 64 --epochs 1000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.5 --ln --rand_split
 ```

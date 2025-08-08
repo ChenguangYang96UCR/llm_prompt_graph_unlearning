@@ -1,16 +1,16 @@
 #!/bin/bash
-DATA_SET="PROTEINS"
-# ENZYMES
-# PROTEINS
-# BZR
-# COX2
+DATA_SET="cornell"
+# cornell
+# texas
+# wisconsin 
+
 NODE_ERASE=0
 EDGE_ERASE=1
 FEATURE_ERASE=2
 SOURCE_FILE="multi_agent.log"
 TARGET_DIR="./store/log/$DATA_SET/"
 
-ERASE_TYPE=$NODE_ERASE
+ERASE_TYPE=$EDGE_ERASE
 
 mkdir -p $TARGET_DIR
 
@@ -22,10 +22,8 @@ MINUTES=$(date +"%M")
 
 for ERASE_NUM in {1..1}; do 
     echo "Run $DATA_SET Erase Number $ERASE_NUM"
-    # python main.py --dataset "$DATA_SET" --erase_type $ERASE_TYPE --erase_num $ERASE_NUM --lr 0.001 --epochs 500 --batch_size 16 
-    # python main.py --dataset "$DATA_SET" --erase_type $ERASE_TYPE --erase_num $ERASE_NUM --lr 0.0001 --epochs 1000 --batch_size 32 --additional_flag --addition_type tda --latent
-    python main.py --dataset "$DATA_SET" --erase_type $ERASE_TYPE --erase_num $ERASE_NUM --lr 0.0001 --epochs 1000 --batch_size 32 --latent
-    # python main.py --dataset "$DATA_SET" --erase_type $ERASE_TYPE --erase_num $ERASE_NUM
+    python WebKG_main.py --dataset "$DATA_SET" --erase_type $ERASE_TYPE --erase_num $ERASE_NUM --hidden_channels 32 --epochs 5000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.2 --ln --rand_split --additional_flag --addition_type tda --latent
+    # python WebKG_main.py --dataset "$DATA_SET" --erase_type $ERASE_TYPE --erase_num $ERASE_NUM --hidden_channels 32 --epochs 5000 --lr 0.0001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.2 --ln --rand_split
     if [ "$ERASE_TYPE" == "$NODE_ERASE" ]; then
         FINAL_DIR="./store/log/$DATA_SET/Node"
         mkdir -p "$FINAL_DIR"

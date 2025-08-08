@@ -123,10 +123,10 @@ def main(args):
             #* Construct graph prompt
             edge = data['edges']
             node_lable = data['node_labels']
-            # face_list = get_faces(graph)
-            # diff_list = power_tda(graph)
-            face_list = []
-            diff_list = []
+            face_list = get_faces(data)
+            diff_list = get_tda(data)
+            # face_list = []
+            # diff_list = []
             response =  llm_agnet.get_response(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
             LOGGER.debug(f'LLM Response: {response}')
 
@@ -169,9 +169,9 @@ def main(args):
             edge = data['edges']
             node_lable = data['node_labels']
             face_list = get_faces(data)
-            diff_list = power_tda(data)
-            face_list = []
-            diff_list = []
+            diff_list = get_tda(data)
+            # face_list = []
+            # diff_list = []
 
             response =  llm_agnet.get_response(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
             LOGGER.debug(f'LLM Response: {response}')
@@ -204,113 +204,139 @@ def main(args):
 
     ### Parse args ###
     parser = argparse.ArgumentParser(description='Training Pipeline for Node Classification')
-    fix_seed(args.seed)
+    seed_best_test = []
+    for seed in range(42, 46):
+        fix_seed(seed)
 
-    if args.cpu:
-        device = torch.device("cpu")
-    else:
-        device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
-
-    dataset = load_webkg_dataset(args.dataset, args.latent, args.erase_num, args.erase_type, args.additional_flag, args.addition_type)
-    if len(dataset.label.shape) == 1:
-        dataset.label = dataset.label.unsqueeze(1)
-
-    if args.rand_split:
-        split_idx_lst = [dataset.get_idx_split(train_prop=args.train_prop, valid_prop=args.valid_prop)
-                        for _ in range(args.runs)]
-    elif args.rand_split_class:
-        split_idx_lst = [class_rand_splits(
-            dataset.label, args.label_num_per_class, args.valid_num, args.test_num)]
-
-
-    dataset.label = dataset.label.to(device)
-
-    ### Basic information of datasets ###
-    n = dataset.graph['num_nodes']
-    e = dataset.graph['edge_index'].shape[1]
-    c = max(dataset.label.max().item() + 1, dataset.label.shape[1])
-    d = dataset.graph['node_feat'].shape[1]
-
-    LOGGER.debug(f"dataset {args.dataset} | num nodes {n} | num edge {e} | num node feats {d} | num classes {c}")
-
-    dataset.graph['edge_index'] = to_undirected(dataset.graph['edge_index'])
-    dataset.graph['edge_index'], _ = remove_self_loops(dataset.graph['edge_index'])
-    dataset.graph['edge_index'], _ = add_self_loops(dataset.graph['edge_index'], num_nodes=n)
-
-    dataset.graph['edge_index'], dataset.graph['node_feat'] = \
-        dataset.graph['edge_index'].to(device), dataset.graph['node_feat'].to(device)
-
-    ### Load method ###
-    model = parse_method(args, n, c, d, device)
-
-    ### Loss function (Single-class, Multi-class) ###
-    if args.dataset in ('questions'):
-        criterion = nn.BCEWithLogitsLoss()
-    else:
-        criterion = nn.NLLLoss()
-
-    ### Performance metric (Acc, AUC) ###
-    if args.metric == 'rocauc':
-        eval_func = eval_rocauc
-    else:
-        eval_func = eval_acc
-
-    args.method = args.gnn
-    logger = Logger(args.runs, LOGGER, args)
-
-    model.train()
-    LOGGER.debug('MODEL:', model)
-
-    ### Training loop ###
-    for run in range(args.runs):
-        if args.dataset in ('coauthor-cs', 'coauthor-physics', 'amazon-computer', 'amazon-photo', 'cora', 'citeseer', 'pubmed'):
-            split_idx = split_idx_lst[0]
+        if args.cpu:
+            device = torch.device("cpu")
         else:
-            split_idx = split_idx_lst[run]
-        train_idx = split_idx['train'].to(device)
-        model.reset_parameters()
-        optimizer = torch.optim.Adam(model.parameters(),weight_decay=args.weight_decay, lr=args.lr)
-        best_val = float('-inf')
-        best_test = float('-inf')
+            device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
-        for epoch in range(args.epochs):
-            model.train()
-            optimizer.zero_grad()
+        dataset = load_webkg_dataset(args.dataset, args.latent, args.erase_num, args.erase_type, args.additional_flag, args.addition_type)
+        if len(dataset.label.shape) == 1:
+            dataset.label = dataset.label.unsqueeze(1)
 
-            out = model(dataset.graph['node_feat'], dataset.graph['edge_index'])
-            if args.dataset in ('questions'):
-                if dataset.label.shape[1] == 1:
-                    true_label = F.one_hot(dataset.label, dataset.label.max() + 1).squeeze(1)
-                else:
-                    true_label = dataset.label
-                loss = criterion(out[train_idx], true_label.squeeze(1)[
-                    train_idx].to(torch.float))
+        if args.rand_split:
+            split_idx_lst = [dataset.get_idx_split(train_prop=args.train_prop, valid_prop=args.valid_prop)
+                            for _ in range(args.runs)]
+        elif args.rand_split_class:
+            split_idx_lst = [class_rand_splits(
+                dataset.label, args.label_num_per_class, args.valid_num, args.test_num)]
+
+
+        dataset.label = dataset.label.to(device)
+
+        ### Basic information of datasets ###
+        n = dataset.graph['num_nodes']
+        e = dataset.graph['edge_index'].shape[1]
+        c = max(dataset.label.max().item() + 1, dataset.label.shape[1])
+        d = dataset.graph['node_feat'].shape[1]
+
+        LOGGER.debug(f"dataset {args.dataset} | num nodes {n} | num edge {e} | num node feats {d} | num classes {c}")
+
+        dataset.graph['edge_index'] = to_undirected(dataset.graph['edge_index'])
+        dataset.graph['edge_index'], _ = remove_self_loops(dataset.graph['edge_index'])
+        dataset.graph['edge_index'], _ = add_self_loops(dataset.graph['edge_index'], num_nodes=n)
+
+        dataset.graph['edge_index'], dataset.graph['node_feat'] = \
+            dataset.graph['edge_index'].to(device), dataset.graph['node_feat'].to(device)
+
+        ### Load method ###
+        model = parse_method(args, n, c, d, device)
+
+        ### Loss function (Single-class, Multi-class) ###
+        if args.dataset in ('questions'):
+            criterion = nn.BCEWithLogitsLoss()
+        else:
+            criterion = nn.NLLLoss()
+
+        ### Performance metric (Acc, AUC) ###
+        if args.metric == 'rocauc':
+            eval_func = eval_rocauc
+        else:
+            eval_func = eval_acc
+
+        args.method = args.gnn
+        logger = Logger(args.runs, LOGGER, args)
+
+        model.train()
+        # LOGGER.debug('MODEL:', model)
+
+        ### Training loop ###
+        if args.erase_type == 0: 
+            type_tring = " Node "
+        if args.erase_type == 1:
+            type_tring = " Edge " 
+
+        if args.additional_flag:
+            additional_string = "True " + args.addition_type
+        else:
+            additional_string = "False"
+        
+        best_test_run = []
+        LOGGER.debug(f"******************************************************** {args.dataset} Erase {type_tring} {args.erase_num}, seed {seed}, Additional: {additional_string}, lr: {args.lr}, epoch: {args.epochs}, hidden channels: {args.hidden_channels}, dropout: {args.dropout} ********************************************************")
+        for run in range(args.runs):
+            if args.dataset in ('coauthor-cs', 'coauthor-physics', 'amazon-computer', 'amazon-photo', 'cora', 'citeseer', 'pubmed'):
+                split_idx = split_idx_lst[0]
             else:
-                out = F.log_softmax(out, dim=1)
-                loss = criterion(
-                    out[train_idx], dataset.label.squeeze(1)[train_idx])
-            loss.backward()
-            optimizer.step()
+                split_idx = split_idx_lst[run]
+            train_idx = split_idx['train'].to(device)
+            model.reset_parameters()
+            optimizer = torch.optim.Adam(model.parameters(),weight_decay=args.weight_decay, lr=args.lr)
+            best_val = float('-inf')
+            best_test = float('-inf')
 
-            result = evaluate(model, dataset, split_idx, eval_func, criterion, args)
+            for epoch in range(args.epochs):
+                model.train()
+                optimizer.zero_grad()
 
-            logger.add_result(run, result[:-1])
+                out = model(dataset.graph['node_feat'], dataset.graph['edge_index'])
+                if args.dataset in ('questions'):
+                    if dataset.label.shape[1] == 1:
+                        true_label = F.one_hot(dataset.label, dataset.label.max() + 1).squeeze(1)
+                    else:
+                        true_label = dataset.label
+                    loss = criterion(out[train_idx], true_label.squeeze(1)[
+                        train_idx].to(torch.float))
+                else:
+                    out = F.log_softmax(out, dim=1)
+                    loss = criterion(
+                        out[train_idx], dataset.label.squeeze(1)[train_idx])
+                loss.backward()
+                optimizer.step()
 
-            if result[1] > best_val:
-                best_val = result[1]
-                best_test = result[2]
+                result = evaluate(model, dataset, split_idx, eval_func, criterion, args)
 
-            if epoch % args.display_step == 0:
-                LOGGER.debug(f'Epoch: {epoch:02d}, '
-                    f'Loss: {loss:.4f}, '
-                    f'Train: {100 * result[0]:.2f}%, '
-                    f'Valid: {100 * result[1]:.2f}%, '
-                    f'Test: {100 * result[2]:.2f}%, '
-                    f'Best Valid: {100 * best_val:.2f}%, '
-                    f'Best Test: {100 * best_test:.2f}%')
-        logger.print_statistics(run)
+                logger.add_result(run, result[:-1])
 
-    results = logger.print_statistics()
+                if result[1] > best_val:
+                    best_val = result[1]
+                if result[2] > best_test:
+                    best_test = result[2]
+
+                if epoch % args.display_step == 0:
+                    LOGGER.debug(f'Epoch: {epoch:02d}, '
+                        f'Loss: {loss:.4f}, '
+                        f'Train: {100 * result[0]:.2f}%, '
+                        f'Valid: {100 * result[1]:.2f}%, '
+                        f'Test: {100 * result[2]:.2f}%, '
+                        f'Best Valid: {100 * best_val:.2f}%, '
+                        f'Best Test: {100 * best_test:.2f}%')
+            best_test_run.append(best_test)
+            logger.print_statistics(run)
+
+        seed_best_test.append(100 * max(best_test_run))
+        results = logger.print_statistics()
+    
+    mean = np.mean(seed_best_test)
+    se = stats.sem(seed_best_test)
+    acc = ""
+    for max_accs in seed_best_test:
+        acc += f"& {max_accs} "
+    acc += f"& {mean}$\pm${se}"
+    LOGGER.debug(f"Erase {args.erase_num} final result: {acc}")
+    
 
 
 if __name__ == '__main__':
@@ -321,14 +347,14 @@ if __name__ == '__main__':
     parser.add_argument('--data_dir', type=str, default='./data/')
     parser.add_argument('--device', type=int, default=0,
                         help='which gpu to use if any (default: 0)')
-    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--runs', type=int, default=1,
                         help='number of distinct runs')
-    parser.add_argument('--train_prop', type=float, default=.5,
+    parser.add_argument('--train_prop', type=float, default=.6,
                         help='training label proportion')
-    parser.add_argument('--valid_prop', type=float, default=.25,
+    parser.add_argument('--valid_prop', type=float, default=.2,
                         help='validation label proportion')
     parser.add_argument('--rand_split', action='store_true',
                         help='use random splits')
