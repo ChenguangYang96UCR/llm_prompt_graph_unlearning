@@ -12,6 +12,7 @@ from src.agent import NormAgent
 from src.utils import separate_data, LOGGER
 from src.models.graphcnn import GraphCNN
 from scipy import stats
+import random
 
 
 criterion = nn.CrossEntropyLoss()
@@ -137,7 +138,10 @@ def load_data(data_set:str, degree_as_tag:bool):
             all_nodes.append(node_id)
 
         edges = graph['edges']
-        for edge in edges:
+        edge_to_delete = random.choice(edges)
+        remaining_edges = [e for e in edges if e != edge_to_delete]
+
+        for edge in remaining_edges:
             g.add_edge(edge[0], edge[1])
 
         g_list.append(S2VGraph(g, graph['graph_label'], node_tags))

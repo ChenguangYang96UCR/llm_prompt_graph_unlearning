@@ -629,33 +629,6 @@ class S2VGraph(object):
         self.edge_mat = torch.LongTensor(0)
         self.max_neighbor = 0
 
-
-
-def load_wiki_new(data_dir, name):
-    path= f'{data_dir}/geom-gcn/{name}/{name}_filtered.npz'
-    data=np.load(path)
-    # lst=data.files
-    # for item in lst:
-    #     print(item)
-    node_feat=data['node_features'] # unnormalized
-    labels=data['node_labels']
-    edges=data['edges'] #(E, 2)
-    edge_index=edges.T
-
-    dataset = NCDataset(name)
-
-    edge_index=torch.as_tensor(edge_index)
-    node_feat=torch.as_tensor(node_feat)
-    labels=torch.as_tensor(labels)
-
-    dataset.graph = {'edge_index': edge_index,
-                     'node_feat': node_feat,
-                     'edge_feat': None,
-                     'num_nodes': node_feat.shape[0]}
-    dataset.label = labels
-
-    return dataset
-
 def load_webkg_dataset(data_set:str, latent, erase_num, erase_type, addition_flag, addition_type):
 
     """
@@ -1094,7 +1067,6 @@ def get_tda(graph):
     maxscale = 10 # maxscale can be tuned
     diffs_list = list()
     for i in range(len(k_hop_subgraphs)):
-        print(i)
         k_hop_subgraph = k_hop_subgraphs[i]
         nodes_degree = np.sum(k_hop_subgraph, axis=1)
 

@@ -139,11 +139,22 @@ class Agent:
         model_answer = tokenizer.decode(outputs[0], skip_special_tokens=True)
         return model_answer
     
-    def webkg_ask_openai(self, messages_list, api_key):
+    def webkg_ask_openai(self, messages_list, api_key, cot):
         messages = []
+        prompt_string = f""
         for message in messages_list:
             messages.append({"role": "user", "content": f"{message}\n"})
-        messages.append({"role": "user", "content": "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan, and please only return the list of edges that need to be deleted on the last line. "})
+            prompt_string += f"{message}\n"
+        if cot:
+            final_message = "Based on all parts above, please answer the question I ask previously: must remove 10%% edges that you think it is not importan. Let's think the result step by step, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+            messages.append({"role": "user", "content": final_message})
+            prompt_string += f"{final_message}\n"
+        else:
+            final_message = "Based on all parts above, please answer the question I ask previously: must remove 10%% edges that you think it is not importan, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+            messages.append({"role": "user", "content": final_message})
+            prompt_string += f"{final_message}\n"
+
+        LOGGER.debug(f"Agent prompt: {prompt_string}")
         openai.api_key = api_key
         for retry in range(5):
             try:
@@ -278,7 +289,7 @@ class WebKGAgent(Agent):
         self.agent_prompt = f"{WEBKG_ROLE_DESCRIPTION[self.agent_type]}\n"
         self.openai_key = ''
 
-    def get_response(self, edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str) -> str:  
+    def get_response(self, edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str, cot : bool) -> str:  
 
         Edge_info = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge} . Please remember these information. """
         Node_info = f""" Node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} . Please remember these information."""
@@ -304,8 +315,12 @@ class WebKGAgent(Agent):
 
         #* Local model in server
         edge_prompt = Edge_info
-        node_prompt = f"{self.agent_prompt}\n" + f"{Node_info}"
+        if cot:
+            node_prompt = f"{self.agent_prompt}\n" + "Let's think the result step by step.\n" + f"{Node_info}"
+        else:
+            node_prompt = f"{self.agent_prompt}\n" + f"{Node_info}"
         Final_prompt = f" I've provided all the necessary information. Please complete the analysis."
+
         if self.llm_type in ['Llama3', 'deepseek']:
             messages_list = []
             response = self.ask_model(self.model, node_prompt, self.tokenizer) 
@@ -321,11 +336,11 @@ class WebKGAgent(Agent):
             if additional_flag:
                 messages_list.append(node_prompt)
                 messages_list.append(edge_prompt + addition_prompt + Final_prompt)
-                response = self.webkg_ask_openai(messages_list, self.openai_key)
+                response = self.webkg_ask_openai(messages_list, self.openai_key, cot)
             else:
                 messages_list.append(node_prompt)
                 messages_list.append(edge_prompt + Final_prompt)
-                response = self.webkg_ask_openai(messages_list, self.openai_key)
+                response = self.webkg_ask_openai(messages_list, self.openai_key, cot)
 
         # update agent memory
         self.memory.append(response)
@@ -341,7 +356,6 @@ class WebKGAgent(Agent):
         """
 
         return self.agent_type
-
 
 class CombineAgent(Agent):
 

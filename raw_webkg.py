@@ -10,7 +10,7 @@ import os
 from tqdm import tqdm
 from src.agent import WebKGAgent
 from torch_geometric.utils import to_undirected, remove_self_loops, add_self_loops
-from src.utils import read_data, construct_mutag_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge, get_tda, power_tda, load_webkg_dataset
+from src.utils import read_data, construct_mutag_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge, get_tda, power_tda, NCDataset
 from src.data_utils import class_rand_splits, load_fixed_splits, eval_rocauc, eval_acc
 from src.models.graphcnn import GraphCNN
 from scipy import stats
@@ -96,101 +96,53 @@ def test(args, model, device, train_graphs, test_graphs, epoch):
 
     return acc_train, acc_test
 
+def load_webkg_dataset(data, data_set):
+    edges = data['edges']
+    source_list = []
+    target_list = []
+    for edge in edges:
+        source_list.append(edge[0])
+        target_list.append(edge[1])
+    edge_index = []
+    edge_index.append(source_list)
+    edge_index.append(target_list)
+
+    nodes = data['node_labels']
+    labels = [None] * data['node_number']
+    for node_id, label in nodes.items():
+        labels[int(node_id)] = int(label)
+
+    node_attribute = data['node_attributes']
+    node_feat = np.array(list(node_attribute.values()))
+
+    dataset = NCDataset(data_set)
+
+    edge_index=torch.as_tensor(edge_index)
+    node_feat=torch.as_tensor(node_feat).to(torch.float)
+    labels=torch.as_tensor(labels)
+
+    dataset.graph = {'edge_index': edge_index,
+                     'node_feat': node_feat,
+                     'edge_feat': None,
+                     'num_nodes': node_feat.shape[0]}
+    dataset.label = labels
+    
+    return dataset
+
 def main(args):
     assert args.dataset == 'cornell' or args.dataset == 'wisconsin' or args.dataset == 'texas', "Only accept webkg dataset for this python file!"
+    LOGGER.debug(f"******************************************************** {args.dataset} random delete edge ********************************************************")
+    data = read_data(args.dataset)
 
-    if not args.latent:
-        latent_string = "False"
-        #! 1. Node Erase Type
-        if args.erase_type == 0:
-            if args.additional_flag:
-                additional_string = "True " + args.addition_type
-            else:
-                additional_string = "False"
-            LOGGER.debug(f"******************************************************** {args.dataset} Erase Node {args.erase_num}, Latent:{latent_string}, Additional: {additional_string} ********************************************************")
+    edges = data['edges']
+    delete_ratio = 0.1  # 10%
+    num_to_delete = max(1, int(len(edges) * delete_ratio))
+    edges_to_delete = random.sample(edges, num_to_delete)
+    remaining_edges = [e for e in edges if e not in edges_to_delete]
+    print("Deleted edges:", edges_to_delete)
+    print("Remaining edges:", remaining_edges)
 
-            #! Load orginal data and initialize agent
-            data = read_data(args.dataset)
-            llm_agnet =  WebKGAgent(1, f'NodeEraser_{args.erase_num}', 'Openai')
-            os.makedirs(f'result/{args.dataset}/', exist_ok=True)
-            if args.additional_flag:
-                os.makedirs(f'store/node_erase/{args.dataset}/{args.addition_type}/', exist_ok=True)
-            else:
-                os.makedirs(f'store/node_erase/{args.dataset}/', exist_ok=True)
-            new_data = []
-
-            #! Ask LLM to delete nodes and store new graph into json file
-            #* Construct graph prompt
-            edge = data['edges']
-            node_lable = data['node_labels']
-            face_list = get_faces(data)
-            diff_list = power_tda(data)
-            # face_list = []
-            # diff_list = []
-            response =  llm_agnet.get_response(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type, args.cot)
-            LOGGER.debug(f'LLM Response: {response}')
-
-            node_list = extract_delete_node(response)
-            LOGGER.debug(f'Nodes need to be deleted: {node_list}')
-
-            new_graph = delete_node(data, node_list)
-            new_data.append(new_graph)
-
-            with open(f'result/{args.dataset}/result.json', 'w') as output:
-                    json.dump(new_data, output)
-            
-            if args.additional_flag:
-                with open(f'store/node_erase/{args.dataset}/{args.addition_type}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
-            else:
-                with open(f'store/node_erase/{args.dataset}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
-        
-        #! 2. Edge Erase Type
-        if args.erase_type == 1:
-            if args.additional_flag:
-                additional_string = "True " + args.addition_type
-            else:
-                additional_string = "False"
-            LOGGER.debug(f"******************************************************** {args.dataset} Erase Edge {args.erase_num}, Latent:{latent_string}, Additional: {additional_string} ********************************************************")
-
-            #! Load orginal data and initialize agent
-            data = read_data(args.dataset)
-            llm_agnet =  WebKGAgent(1, f'EdgeEraser_{args.erase_num}', 'Openai')
-            os.makedirs(f'result/{args.dataset}/', exist_ok=True)
-            if args.additional_flag:
-                os.makedirs(f'store/edge_erase/{args.dataset}/{args.addition_type}/', exist_ok=True)
-            else:
-                os.makedirs(f'store/edge_erase/{args.dataset}/', exist_ok=True)
-            new_data = []
-
-            #! Ask LLM to delete nodes and store new graph into json file
-            #* Construct graph prompt
-            edge = data['edges']
-            node_lable = data['node_labels']
-            face_list = get_faces(data)
-            diff_list = power_tda(data)
-            # face_list = []
-            # diff_list = []
-
-            response = llm_agnet.get_response(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type, args.cot)
-            LOGGER.debug(f'LLM Response: {response}')
-
-            edge_list = extract_delete_edge(response)
-            LOGGER.debug(f'Edges need to be deleted: {edge_list}')
-
-            new_graph = delete_edge(data, edge_list)
-            new_data.append(new_graph)
-
-            with open(f'result/{args.dataset}/result.json', 'w') as output:
-                    json.dump(new_data, output)
-
-            if args.additional_flag:
-                with open(f'store/edge_erase/{args.dataset}/{args.addition_type}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
-            else:
-                with open(f'store/edge_erase/{args.dataset}/erase_{args.erase_num}.json', 'w') as output:
-                    json.dump(new_data, output)
+    data['edges'] = edges
 
     #! execute the mpnns for erased graph
     def fix_seed(seed=42):
@@ -213,7 +165,7 @@ def main(args):
         else:
             device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
-        dataset = load_webkg_dataset(args.dataset, args.latent, args.erase_num, args.erase_type, args.additional_flag, args.addition_type)
+        dataset = load_webkg_dataset(data, args.dataset)
         if len(dataset.label.shape) == 1:
             dataset.label = dataset.label.unsqueeze(1)
 
@@ -264,18 +216,8 @@ def main(args):
         # LOGGER.debug('MODEL:', model)
 
         ### Training loop ###
-        if args.erase_type == 0: 
-            type_tring = " Node "
-        if args.erase_type == 1:
-            type_tring = " Edge " 
-
-        if args.additional_flag:
-            additional_string = "True " + args.addition_type
-        else:
-            additional_string = "False"
-        
         best_test_run = []
-        LOGGER.debug(f"******************************************************** {args.dataset} Erase {type_tring} {args.erase_num}, seed {seed}, Additional: {additional_string}, lr: {args.lr}, epoch: {args.epochs}, hidden channels: {args.hidden_channels}, dropout: {args.dropout} ********************************************************")
+        LOGGER.debug(f"******************************************************** {args.dataset} Random delete seed {seed}, lr: {args.lr}, epoch: {args.epochs}, hidden channels: {args.hidden_channels}, dropout: {args.dropout} ********************************************************")
         for run in range(args.runs):
             if args.dataset in ('coauthor-cs', 'coauthor-physics', 'amazon-computer', 'amazon-photo', 'cora', 'citeseer', 'pubmed'):
                 split_idx = split_idx_lst[0]
@@ -335,9 +277,8 @@ def main(args):
     for max_accs in seed_best_test:
         acc += f"& {max_accs} "
     acc += f"& {mean}$\pm${se}"
-    LOGGER.debug(f"Erase {args.erase_num} final result: {acc}")
+    LOGGER.debug(f"Random delete final result: {acc}")
     
-
 
 if __name__ == '__main__':
 
@@ -349,8 +290,8 @@ if __name__ == '__main__':
                         help='which gpu to use if any (default: 0)')
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--cpu', action='store_true')
-    parser.add_argument('--epochs', type=int, default=500)
-    parser.add_argument('--runs', type=int, default=1,
+    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--runs', type=int, default=3,
                         help='number of distinct runs')
     parser.add_argument('--train_prop', type=float, default=.6,
                         help='training label proportion')
@@ -392,17 +333,5 @@ if __name__ == '__main__':
     parser.add_argument('--display_step', type=int,
                         default=100, help='how often to print')
     parser.add_argument('--model_dir', type=str, default='./model/', help='where to save model')
-    parser.add_argument('--erase_num', type = int, default = 1,
-                                        help='erease number of node or edge')
-    parser.add_argument('--latent', action="store_true",
-    					help='use latent graph')
-    parser.add_argument('--additional_flag', action="store_true",
-    					help='use additional prompt information')
-    parser.add_argument('--erase_type', type=int, default=1,
-                        help='erase type in graph, 0: nodes, 1: edges, 2:feature (default: 0)')
-    parser.add_argument('--addition_type', type=str, default="sc",
-                        help='name of addition type (default: sc), supported addition type: sc, tda, combine')
-    parser.add_argument('--cot', action="store_true",
-    					help='add cot information in prompt flag')
     args = parser.parse_args()
     main(args)

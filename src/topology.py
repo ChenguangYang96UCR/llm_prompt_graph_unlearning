@@ -307,7 +307,6 @@ def WL_w_adj_attributes(adj, w_adj, features, iteration):
     WL_w_adj_features = np.zeros(shape=(features.shape), dtype= np.float32)
     deg_inverse = (1./np.sum(adj, axis= 1)).reshape((1,-1))
     for i in range(iteration):
-        print(i)
         if i == 0:
             WL_w_adj_features = 0.5 * (features + np.transpose(deg_inverse * np.transpose(np.matmul(w_adj, features))))
         else:
@@ -318,7 +317,6 @@ def WL_w_adj_attributes(adj, w_adj, features, iteration):
 def WL_attributes_distance_mat(WL_features):
     WL_distance_mat = np.zeros(shape=(WL_features.shape[0], WL_features.shape[0]),dtype= np.float32)
     for i in range(WL_features.shape[0]-1):
-        print(i)
         for j in range(i+1, WL_features.shape[0]):
             WL_distance_mat[i,j] = np.sqrt(np.sum(np.square(WL_features[i,:] - WL_features[j,:])))
             WL_distance_mat[j,i] = np.sqrt(np.sum(np.square(WL_features[i,:] - WL_features[j,:])))
