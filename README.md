@@ -29,7 +29,7 @@ Before run main code, you need to provide hugging face token and openai api key.
 If you want to run the erase process from 1 to 10, you can execute the shell script
 
 ```shell
-python data_loader.py
+python data_loader.py --dataset MUTAG
 
 ./run.sh
 ```
@@ -43,7 +43,20 @@ chmod +x run.sh
 # WebKG dataset execute
 
 ```shell
+python data_loader.py --dataset cornell
+
 python WebKG_main.py --dataset cornell --hidden_channels 64 --epochs 1000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.5 --ln --rand_split
 python WebKG_main.py --dataset wisconsin --hidden_channels 64 --epochs 1000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.5 --ln --rand_split
 python WebKG_main.py --dataset texas --hidden_channels 64 --epochs 1000 --lr 0.001 --runs 3 --local_layers 2 --weight_decay 5e-5 --dropout 0.5 --ln --rand_split
+```
+
+# Planetoid dataset execute
+
+```shell
+
+python data_loader.py --dataset Cora
+
+python Planetoid_main.py --dataset "Cora" --hidden_channels 64 --epochs 5000 --lr 0.001 --runs 3 --local_layers 3 --weight_decay 5e-5 --dropout 0.2 --ln --rand_split --additional_flag --addition_type tda 
+
+python Planetoid_main.py --dataset "CiteSeer" --hidden_channels 64 --epochs 5000 --lr 0.001 --runs 3 --local_layers 3 --weight_decay 5e-5 --dropout 0.2 --ln --rand_split --additional_flag --addition_type tda 
 ```

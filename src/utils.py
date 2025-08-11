@@ -788,7 +788,7 @@ def load_planetoid_dataset(data_set:str, latent, erase_num, erase_type, addition
         list, type number of graph class: [graph_list, type numbers]
     """    
 
-    data_list = ['Cora', 'Citeseer']
+    data_list = ['Cora', 'CiteSeer']
     assert data_set in data_list , 'Your data set does not exist!'
 
     if latent:
