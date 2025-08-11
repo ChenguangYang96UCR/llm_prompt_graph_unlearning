@@ -164,8 +164,6 @@ ROLE_DESCRIPTION = {
         "You will be given some examples you may refer to."
 }
 
-# "Let's think step by step."
-
 WEBKG_ROLE_DESCRIPTION = {
     "NodeEraser_1": 
         "You are a graph eraser expert. "
@@ -177,7 +175,23 @@ WEBKG_ROLE_DESCRIPTION = {
 
     "EdgeEraser_1": 
         "You are a graph eraser expert. "
-        "And I will give you a graph, please must remove 5%% edges that you think it is not important. "
+        "And I will give you a graph, please must remove 10%% edges that you think it is not important. "
+        "I will seperately show you the edge's information and node's lable and may contain further details. "
+        "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
+        "There is another example: [[5,9], [9,11]]",
+}
+
+PLANETOID_ROLE_DESCRIPTION = {
+    "NodeEraser_1": 
+        "You are a graph eraser expert. "
+        "And I will give you a graph, please must remove one node that you think it is not important. "
+        "I will seperately show you the edge's information and node's lable and may contain further details. "
+        "Please only return the list of node id that need to be deleted on the last line, such as: 3, 4, 15. "
+        "There is another example: 5, 9, 11"
+        "Let's think the result step by step.",
+
+    "EdgeEraser_1": 
+        "You are a graph eraser expert. "
         "I will seperately show you the edge's information and node's lable and may contain further details. "
         "Please only return the list of edges that need to be deleted on the last line, such as: [[1,2], [3,4]]. "
         "There is another example: [[5,9], [9,11]]",

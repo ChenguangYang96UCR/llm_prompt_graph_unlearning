@@ -5,10 +5,9 @@ import networkx as nx
 import numpy as np
 import torch
 import re
+import math
 import gudhi as gd
-import csv
 from sklearn.model_selection import StratifiedKFold
-import shutil
 from src.topology import edge_weight_func, k_th_order_weighted_subgraph, simplicial_complex_dgm
 
 def rand_train_test_idx(label, train_prop=0.5, valid_prop=0.25, ignore_negative=True):
@@ -424,6 +423,80 @@ def WebKB_preprocess(dataset : str):
     with open(f"output/{dataset}/output.json", 'w') as output:
         json.dump(data, output)
 
+def Planetoid_preprocess(dataset , data, extract_flag:bool = False):
+    os.makedirs(f"output/{dataset}/", exist_ok=True)
+    node_extract_rate = 0.05
+    data = data[0]
+    edge_index = data.edge_index
+    node_feat = data.x
+    label = data.y
+    num_nodes = data.num_nodes
+    if extract_flag:
+        nodes_label = {}
+        for index, node_label in enumerate(label):
+            nodes_label[index] = node_label.item()
+        n = len(nodes_label)
+        top_k = max(1, math.ceil(n * node_extract_rate))  # Ensure at least one node
+        # Sort by label value in descending order and keep top 1%
+        top_nodes_label = dict(sorted(nodes_label.items(), key=lambda x: x[1], reverse=True)[:top_k])
+        top_nodes = list(top_nodes_label.keys())
+        print(f"{num_nodes} nodes extract {len(top_nodes_label)} nodes, {top_nodes_label}")
+
+        graph = []
+        for index in range(len(edge_index[0])):
+            source_node = edge_index[0][index].item()
+            target_node = edge_index[1][index].item()
+            if source_node in top_nodes and target_node in top_nodes:
+                graph.append([source_node, target_node, 1])
+        print(f"{len(edge_index[0])} edges extract {len(graph)} edges, {graph}")
+
+        nodes_attribute = {}
+        for index, node_attribute in enumerate(node_feat):
+            node_attribute_list = [int(x) for x in node_attribute]
+            if index in top_nodes:
+                nodes_attribute[index] = node_attribute_list
+        print(f"{num_nodes} nodes extract {len(nodes_attribute)} nodes attributes, {nodes_attribute.keys()}")
+
+        nodes_map = {}
+        new_top_nodes_label = {}
+        new_top_nodes_attribute = {}
+        new_id = 0
+        for node in top_nodes:
+            nodes_map[node] = new_id
+            new_top_nodes_label[new_id] = top_nodes_label[node]
+            new_top_nodes_attribute[new_id] = nodes_attribute[node]
+            new_id += 1
+        
+        new_graph = []
+        for edge in graph:
+            new_graph.append([nodes_map[edge[0]], nodes_map[edge[1]], 1])
+
+        print(f"{num_nodes} nodes extract {len(new_top_nodes_label)} nodes, new label: {new_top_nodes_label}")
+        print(f"{num_nodes} nodes extract {len(new_top_nodes_attribute)} nodes, new atrribute: {new_top_nodes_attribute.keys()}")
+        print(f"{len(edge_index[0])} edges extract {len(new_graph)} edges, new edges: {new_graph}")
+
+        assert len(new_top_nodes_attribute) == len(new_top_nodes_label), "Node number is not equal"
+        data = {"edges": new_graph, "node_number": len(new_top_nodes_label), "node_labels": new_top_nodes_label, "node_attributes": new_top_nodes_attribute}
+        with open(f"output/{dataset}/output.json", 'w') as output:
+            json.dump(data, output)
+    else:
+        nodes_label = {}
+        for index, node_label in enumerate(label):
+            nodes_label[index] = node_label.item()
+        graph = []
+        for index in range(len(edge_index[0])):
+            source_node = edge_index[0][index].item()
+            target_node = edge_index[1][index].item()
+            graph.append([source_node, target_node, 1])
+        nodes_attribute = {}
+        for index, node_attribute in enumerate(node_feat):
+            node_attribute_list = [int(x) for x in node_attribute]
+            nodes_attribute[index] = node_attribute_list
+        assert len(nodes_label) == len(nodes_attribute), "Node number is not equal"
+        data = {"edges": graph, "node_number": len(nodes_label), "node_labels": nodes_label, "node_attributes": nodes_attribute}
+        with open(f"output/{dataset}/output.json", 'w') as output:
+            json.dump(data, output)
+        
 def read_data(data_set: str = 'MUTAG'):
 
     """
@@ -436,7 +509,7 @@ def read_data(data_set: str = 'MUTAG'):
         list: json data list
     """    
 
-    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES', 'cornell', 'wisconsin', 'texas']
+    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES', 'cornell', 'wisconsin', 'texas', 'Cora', 'CiteSeer']
     assert data_set in data_list , 'Your data set does not exist!'
     data_set_root = './output/'
     with open(data_set_root + data_set +'/output.json', 'r') as input:
@@ -643,6 +716,79 @@ def load_webkg_dataset(data_set:str, latent, erase_num, erase_type, addition_fla
     """    
 
     data_list = ['cornell', 'wisconsin', 'texas']
+    assert data_set in data_list , 'Your data set does not exist!'
+
+    if latent:
+        if erase_type == 0:
+            if addition_flag:
+                LOGGER.debug(f'GCN Load node erase latent {data_set} data: store/node_erase/{data_set}/{addition_type}/erase_{erase_num}.json')
+                with open(f'store/node_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+            else:
+                LOGGER.debug(f'GCN Load node erase latent {data_set} data: store/node_erase/{data_set}/erase_{erase_num}.json')
+                with open(f'store/node_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+        if erase_type == 1:
+            if addition_flag:
+                LOGGER.debug(f'GCN Load edge erase latent {data_set} data: store/edge_erase/{data_set}/{addition_type}/erase_{erase_num}.json')
+                with open(f'store/edge_erase/{data_set}/{addition_type}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+            else:
+                LOGGER.debug(f'GCN Load edge erase latent {data_set} data: store/edge_erase/{data_set}/erase_{erase_num}.json')
+                with open(f'store/edge_erase/{data_set}/erase_{erase_num}.json', 'r') as file:
+                    data = json.load(file)
+    else:
+        LOGGER.debug(f'GCN Load latest {data_set} data: result/{data_set}/result.json')
+        with open(f'result/{data_set}/result.json', 'r') as file:
+            data = json.load(file)
+
+    data = data[0]
+    edges = data['edges']
+    source_list = []
+    target_list = []
+    for edge in edges:
+        source_list.append(edge[0])
+        target_list.append(edge[1])
+    edge_index = []
+    edge_index.append(source_list)
+    edge_index.append(target_list)
+
+    nodes = data['node_labels']
+    labels = [None] * data['node_number']
+    for node_id, label in nodes.items():
+        labels[int(node_id)] = int(label)
+
+    node_attribute = data['node_attributes']
+    node_feat = np.array(list(node_attribute.values()))
+
+    dataset = NCDataset(data_set)
+
+    edge_index=torch.as_tensor(edge_index)
+    node_feat=torch.as_tensor(node_feat).to(torch.float)
+    labels=torch.as_tensor(labels)
+
+    dataset.graph = {'edge_index': edge_index,
+                     'node_feat': node_feat,
+                     'edge_feat': None,
+                     'num_nodes': node_feat.shape[0]}
+    dataset.label = labels
+    
+    return dataset
+
+def load_planetoid_dataset(data_set:str, latent, erase_num, erase_type, addition_flag, addition_type):
+
+    """
+    load data to operate mpnns 
+
+    Args:
+        data_set (str): data set name
+        degree_as_tag (bool): determine use degree as tag or not
+
+    Returns:
+        list, type number of graph class: [graph_list, type numbers]
+    """    
+
+    data_list = ['Cora', 'Citeseer']
     assert data_set in data_list , 'Your data set does not exist!'
 
     if latent:

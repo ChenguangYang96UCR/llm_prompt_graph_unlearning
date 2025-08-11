@@ -4,7 +4,7 @@ import os
 import re
 from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed, Trainer, TrainingArguments, BitsAndBytesConfig, \
     DataCollatorForLanguageModeling, Trainer, TrainingArguments
-from src.config import LLM, CHEKPOINTS, ROLE_DESCRIPTION, WEBKG_ROLE_DESCRIPTION
+from src.config import LLM, CHEKPOINTS, ROLE_DESCRIPTION, WEBKG_ROLE_DESCRIPTION, PLANETOID_ROLE_DESCRIPTION
 from src.utils import LOGGER
 import openai
 import time
@@ -32,6 +32,7 @@ class Agent:
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.llm_type = llm_type
+        self.openai_key = ''
 
         # LLM 
         LOGGER.debug(f'Agent_{agent_id} ({agent_type}) initialize with llm model {llm_type}')
@@ -356,6 +357,194 @@ class WebKGAgent(Agent):
         """
 
         return self.agent_type
+
+class PlanetoidAgent(Agent):
+    """
+    WebKGAgent agent class
+
+    Args:
+        Agent (class): base agent class
+
+    Example:
+        agent = PlanetoidAgent(1, 'MathSolver', 'deepseek')
+        response = agent.get_response(query)
+    """
+
+    def __init__(self, agent_id, agent_type, llm_type):
+
+        """
+        WebKGAgent agent class init function 
+
+        Args:
+            agent_id (int): agent id
+            agent_type (str): agent type
+            llm_type (str): llm name, such as (Llama3, deepseek)
+        """
+        super().__init__(agent_id, agent_type, llm_type)
+        self.agent_prompt = f"{PLANETOID_ROLE_DESCRIPTION[self.agent_type]}\n"
+
+    def planetoid_ask_openai(self, messages_list, api_key, cot):
+        messages = []
+        prompt_string = f""
+        for message in messages_list:
+            messages.append({"role": "user", "content": f"{message}\n"})
+            prompt_string += f"{message}\n"
+        if cot:
+            final_message = "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan. Let's think the result step by step, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+            messages.append({"role": "user", "content": final_message})
+            prompt_string += f"{final_message}\n"
+        else:
+            final_message = "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+            messages.append({"role": "user", "content": final_message})
+            prompt_string += f"{final_message}\n"
+
+        LOGGER.debug(f"Agent prompt: {prompt_string}")
+        openai.api_key = api_key
+        for retry in range(5):
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-4o",  # Updated to use the latest and more advanced model
+                    messages=messages,
+                    temperature=0.2,
+                    max_tokens=16384
+                )
+                break
+            except openai.error.ServiceUnavailableError:
+                wait_time = 2 ** retry
+                time.sleep(wait_time)
+        result = response['choices'][0]['message']['content'].strip()
+        return result
+
+    def get_response(self, edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str, cot : bool) -> str: 
+
+        def chunk_list(lst, chunk_size):
+            for i in range(0, len(lst), chunk_size):
+                yield lst[i:i+chunk_size] 
+
+        edge_info_list = []
+        for edge_list in chunk_list(edge, chunk_size=2000):
+            edge_info_list.append(f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge_list} . Please remember these information. """)
+
+        def extract_delete_edge(response : str):
+
+            """
+            extract deleted edge from string
+
+            Args:
+                response (str): llm response
+
+            Returns:
+                list: list of edges which need to be deleted
+            """    
+            answer_line = response.split('\n')[-1]
+            match = re.search(r'\[\[.*?\]\]', answer_line)
+            edges = []
+            if match:
+                result = match.group(0)
+                result = result.split('], [')
+                edges = []
+                for pair in result:
+                    nodes = pair.split(',')
+                    edge = []
+                    for node in nodes:
+                        number = re.findall(r'\d+\.?\d*', node)
+                        edge.append(int(number[0]))
+                    edges.append(edge)
+            return edges
+        
+        # Edge_info = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge} . Please remember these information. """
+        Node_info = f""" Node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} . Please remember these information."""
+
+        if additional_flag:
+            sc_prompt = f""" And The graph simplicial complex list is : {face_list} .
+                """
+            
+            diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+                List: {diff_list}
+                """
+
+            if addition_type == 'sc':
+                addition_prompt = sc_prompt
+            
+            if addition_type == 'tda':
+                addition_prompt = diff_prompt
+
+            if addition_type == 'combine':
+                addition_prompt = sc_prompt + diff_prompt
+        
+        LOGGER.debug(f'agent_{self.agent_id}({self.agent_type}) generated response.')
+
+        #* Local model in server
+        edge_prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge} . Please remember these information. """
+        if cot:
+            node_prompt = f"{self.agent_prompt}\n" + "Let's think the result step by step.\n" + f"{Node_info}"
+        else:
+            node_prompt = f"{self.agent_prompt}\n" + f"{Node_info}"
+
+        if self.llm_type in ['Llama3', 'deepseek']:
+            delete_edges = []
+            if additional_flag:
+                for edge_info in edge_info_list:
+                    messages_list = []
+                    messages_list.append(node_prompt)
+                    messages_list.append(edge_info + addition_prompt)
+                    if cot:
+                        final_message = "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan. Let's think the result step by step, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+                        messages_list.append(final_message)
+                    else:
+                        final_message = "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+                        messages_list.append(final_message)
+                    response = self.ask_model(self.model, messages_list, self.tokenizer)   
+                    if self.llm_type == 'deepseek':
+                        response = response.split("</think>")[-1]     
+                    delete_edges.extend(extract_delete_edge(response)) 
+            else:
+                for edge_info in edge_info_list:
+                    messages_list = []
+                    messages_list.append(node_prompt)
+                    messages_list.append(edge_info)
+                    if cot:
+                        final_message = "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan. Let's think the result step by step, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+                        messages_list.append(final_message)
+                    else:
+                        final_message = "Based on all parts above, please answer the question I ask previously: must remove 5%% edges that you think it is not importan, and please only return the list of edges that need to be deleted on the last line (Do not use any bold, italics, code blocks, or other font formatting anywhere in your response)."
+                        messages_list.append(final_message)
+                    response = self.ask_model(self.model, messages_list, self.tokenizer) 
+                    if self.llm_type == 'deepseek':
+                        response = response.split("</think>")[-1]     
+                    delete_edges.extend(extract_delete_edge(response))   
+        else:
+            delete_edges = []
+            if additional_flag:
+                for edge_info in edge_info_list:
+                    messages_list = []
+                    messages_list.append(node_prompt)
+                    messages_list.append(edge_info + addition_prompt)
+                    response = self.planetoid_ask_openai(messages_list, self.openai_key, cot)
+                    delete_edges.extend(extract_delete_edge(response)) 
+            else:
+                for edge_info in edge_info_list:
+                    messages_list = []
+                    messages_list.append(node_prompt)
+                    messages_list.append(edge_info)
+                    response = self.planetoid_ask_openai(messages_list, self.openai_key, cot)
+                    delete_edges.extend(extract_delete_edge(response))
+
+        # update agent memory
+        self.memory.append(response)
+        return delete_edges
+    
+    def get_agent_type(self) -> str :
+        
+        """
+        Get agent type
+
+        Returns:
+            str: agent type
+        """
+
+        return self.agent_type
+
 
 class CombineAgent(Agent):
 

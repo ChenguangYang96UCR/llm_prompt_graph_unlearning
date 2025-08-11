@@ -1,12 +1,11 @@
-from torch_geometric.datasets import TUDataset
-from torch_geometric.datasets import WebKB
+from torch_geometric.datasets import TUDataset, Planetoid, WebKB
 import argparse
-from src.utils import dataset_preprocess, dataset_preprocess_without_edge_label, WebKB_preprocess
+from src.utils import dataset_preprocess, dataset_preprocess_without_edge_label, WebKB_preprocess, Planetoid_preprocess
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="preprocess the data set")
     parser.add_argument('--dataset', type=str, default="MUTAG",
-                        help='name of dataset (default: MUTAG), and also can be "PROTEINS", "BZR", "COX2", "ENZYMES", "cornell", "wisconsin", "texas"')
+                        help='name of dataset (default: MUTAG), and also can be "PROTEINS", "BZR", "COX2", "ENZYMES", "cornell", "wisconsin", "texas", "Cora", "CiteSeer"')
     args = parser.parse_args()
 
     if args.dataset == "MUTAG" or args.dataset == "PROTEINS" or args.dataset == "BZR" or args.dataset == "COX2" or args.dataset == "ENZYMES":
@@ -20,6 +19,10 @@ if __name__ == '__main__':
 
     if args.dataset == "texas" : 
         dataset = WebKB(root=f"dataset/", name='Texas')
+
+    if args.dataset == "Cora" or args.dataset == "CiteSeer":
+        dataset = Planetoid(root='dataset/', name=args.dataset)
+        Planetoid_preprocess(args.dataset, dataset)
     
     if args.dataset == "MUTAG":
         dataset_preprocess(args.dataset)
