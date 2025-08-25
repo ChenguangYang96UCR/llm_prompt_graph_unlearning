@@ -142,7 +142,7 @@ def main(args):
     print("Deleted edges:", edges_to_delete)
     print("Remaining edges:", remaining_edges)
 
-    data['edges'] = edges
+    data['edges'] = remaining_edges
 
     #! execute the mpnns for erased graph
     def fix_seed(seed=42):

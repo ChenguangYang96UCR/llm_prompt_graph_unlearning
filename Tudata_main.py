@@ -8,7 +8,7 @@ import json
 import os
 from tqdm import tqdm
 from src.agent import NormAgent
-from src.utils import read_data, construct_mutag_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge, construct_protein_prompt_graph, construct_bzr_prompt_graph, construct_cox2_prompt_graph, construct_enzymes_prompt_graph, get_tda, power_tda
+from src.utils import read_data, construct_mutag_prompt_graph, load_data, separate_data, delete_node, extract_delete_node, get_faces, extract_delete_edge, LOGGER, delete_edge, construct_protein_prompt_graph, construct_bzr_prompt_graph, construct_cox2_prompt_graph, construct_enzymes_prompt_graph, get_tda, power_tda, construct_ptc_prompt_graph, construct_imdb_prompt_graph
 from src.models.graphcnn import GraphCNN
 from scipy import stats
 
@@ -88,7 +88,7 @@ def main(args):
         #! 1. Node Erase Type
         if args.erase_type == 0:
             if args.additional_flag:
-                additional_string = "True " + args.addition_type
+                additional_string = "True power" + args.addition_type
             else:
                 additional_string = "False"
             LOGGER.debug(f"******************************************************** {args.dataset} Erase Node {args.erase_num}, Latent:{latent_string}, Additional: {additional_string} ********************************************************")
@@ -107,7 +107,10 @@ def main(args):
             for index,  graph in enumerate(data):
                 #* Construct graph prompt
                 edge = graph['edges']
-                node_lable = graph['node_labels']
+                if args.dataset == 'IMDB-MULTI' or args.dataset == 'IMDB-BINARY':
+                    pass
+                else:
+                    node_lable = graph['node_labels']
                 face_list = get_faces(graph)
                 diff_list = power_tda(graph)
 
@@ -121,7 +124,10 @@ def main(args):
                     graph_prompt = construct_cox2_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
                 if args.dataset == "ENZYMES":
                     graph_prompt = construct_enzymes_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
-
+                if args.dataset == "PTC_MR":
+                    graph_prompt = construct_ptc_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
+                if args.dataset == 'IMDB-MULTI' or args.dataset == 'IMDB-BINARY':
+                    graph_prompt = construct_imdb_prompt_graph(edge, face_list, diff_list, args.additional_flag, args.addition_type)
                 LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
 
                 response =  llm_agnet.get_response(query = graph_prompt)
@@ -146,7 +152,7 @@ def main(args):
         #! 2. Edge Erase Type
         if args.erase_type == 1:
             if args.additional_flag:
-                additional_string = "True " + args.addition_type
+                additional_string = "True degree" + args.addition_type
             else:
                 additional_string = "False"
             LOGGER.debug(f"******************************************************** {args.dataset} Erase Edge {args.erase_num}, Latent:{latent_string}, Additional: {additional_string} ********************************************************")
@@ -165,9 +171,12 @@ def main(args):
             for index,  graph in enumerate(data):
                 #* Construct graph prompt
                 edge = graph['edges']
-                node_lable = graph['node_labels']
+                if args.dataset == 'IMDB-MULTI' or args.dataset == 'IMDB-BINARY':
+                    pass
+                else:
+                    node_lable = graph['node_labels']
                 face_list = get_faces(graph)
-                diff_list = power_tda(graph)
+                diff_list = get_tda(graph)
 
                 if args.dataset == "MUTAG":
                     graph_prompt = construct_mutag_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
@@ -179,6 +188,10 @@ def main(args):
                     graph_prompt = construct_cox2_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
                 if args.dataset == "ENZYMES":
                     graph_prompt = construct_enzymes_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
+                if args.dataset == "PTC_MR":
+                    graph_prompt = construct_ptc_prompt_graph(edge, node_lable, face_list, diff_list, args.additional_flag, args.addition_type)
+                if args.dataset == 'IMDB-MULTI' or args.dataset == 'IMDB-BINARY':
+                    graph_prompt = construct_imdb_prompt_graph(edge, face_list, diff_list, args.additional_flag, args.addition_type)
                 LOGGER.debug(f'Graph {index} LLM Prompt: {graph_prompt}')
 
                 response =  llm_agnet.get_response(query = graph_prompt)

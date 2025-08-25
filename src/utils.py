@@ -8,6 +8,7 @@ import re
 import math
 import gudhi as gd
 from sklearn.model_selection import StratifiedKFold
+from typing import Optional
 from src.topology import edge_weight_func, k_th_order_weighted_subgraph, simplicial_complex_dgm
 
 def rand_train_test_idx(label, train_prop=0.5, valid_prop=0.25, ignore_negative=True):
@@ -135,6 +136,7 @@ def dataset_preprocess(dataset : str):
     """    
 
     os.makedirs(f"output/{dataset}/", exist_ok=True)
+
     #* Get node number for each graph
     nodes_numbers = []
     with open(f"dataset/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
@@ -193,6 +195,10 @@ def dataset_preprocess(dataset : str):
         #! add last graph into graph list
         graphs.append(graph)
 
+    # reorder graph
+    # for index, graph in enumerate(graphs):
+    #     graphs[index] = reorder_graph(graph, "dfs")
+
     #* Get node label for each node
     graph_node_number = 0
     graph_node_labels = []
@@ -238,6 +244,100 @@ def dataset_preprocess(dataset : str):
     with open(f"output/{dataset}/output.json", 'w') as output:
         json.dump(data_list, output)
 
+def imdb_dataset_preprocess(dataset : str, graph_label_flag : bool = False):
+
+    """
+    dataset preprocess, write data into json file
+    """    
+
+    os.makedirs(f"output/{dataset}/", exist_ok=True)
+
+    #* Get node number for each graph
+    nodes_numbers = []
+    graph_node_labels = []
+    with open(f"dataset/{dataset}/raw/{dataset}_graph_indicator.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        start_indicator = 1
+        nodes_number = 0
+        node_labels = {}
+        for line in lines: 
+            if int(line.strip()) == start_indicator:
+                nodes_number += 1
+                node_labels[nodes_number] = 1
+            else:
+                nodes_numbers.append(nodes_number)
+                graph_node_labels.append(node_labels.copy())
+                node_labels.clear()
+                nodes_number = 1
+                node_labels[nodes_number] = 1
+                start_indicator = int(line.strip())
+
+     #! add last node number into nodes list
+    nodes_numbers.append(nodes_number)
+    graph_node_labels.append(node_labels.copy())
+
+    #* Get edge info for each graph
+    graphs = []
+    with open(f"dataset/{dataset}/raw/{dataset}_A.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        start_id = 1
+        start_index = 1
+        graph_index = 0
+        graph = []
+        for index, line in enumerate(lines):
+            node_ids = line.strip().split(',')
+            edge = []
+            cross_graph = False
+            for node_id in node_ids:
+                edge.append(int(node_id.strip()) - start_index)
+                if int(node_id.strip()) >= start_id + nodes_numbers[graph_index]:
+                    cross_graph = True
+            edge.append(int(1))
+
+            if cross_graph:
+                start_id += nodes_numbers[graph_index]
+                start_index += nodes_numbers[graph_index]
+
+                # renew the edge information
+                edge.clear()
+                for node_id in node_ids:
+                    edge.append(int(node_id.strip()) - start_index)
+                edge.append(int(1))
+
+                graph_index += 1
+                graphs.append(graph.copy())
+                graph.clear()
+                graph.append(edge)
+            else:
+                graph.append(edge)
+        
+        #! add last graph into graph list
+        graphs.append(graph)
+
+    # reorder graph
+    # for index, graph in enumerate(graphs):
+    #     graphs[index] = reorder_graph(graph, "dfs")
+  
+    graph_labels = []
+    with open(f"dataset/{dataset}/raw/{dataset}_graph_labels.txt", 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        for line in lines:
+            graph_label = line.strip()
+            if graph_label_flag:
+                graph_labels.append(int(graph_label) - 1)
+            else:
+                if int(graph_label) == -1:
+                    graph_label = '0'
+                graph_labels.append(int(graph_label))
+            
+    assert len(graphs) == len(nodes_numbers) and len(graphs) == len(graph_labels), "Graph length are different!"
+    data_list = []
+    for index, node_number in enumerate(nodes_numbers):
+        data = {"edges": graphs[index], "node_number": node_number, "node_labels": graph_node_labels[index], "graph_label": graph_labels[index]}
+        data_list.append(data)
+    
+    with open(f"output/{dataset}/output.json", 'w') as output:
+        json.dump(data_list, output)
 
 def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool):
 
@@ -305,6 +405,10 @@ def dataset_preprocess_without_edge_label(dataset : str, graph_label_flag : bool
         
         #! add last graph into graph list
         graphs.append(graph)
+
+    # reorder graph
+    for index, graph in enumerate(graphs):
+        graphs[index] = reorder_graph(graph, "bfs")
 
     #* Get node label for each node
     graph_node_number = 0
@@ -509,7 +613,7 @@ def read_data(data_set: str = 'MUTAG'):
         list: json data list
     """    
 
-    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES', 'cornell', 'wisconsin', 'texas', 'Cora', 'CiteSeer']
+    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES', 'cornell', 'wisconsin', 'texas', 'Cora', 'CiteSeer', 'PTC_MR', 'IMDB-MULTI', 'IMDB-BINARY']
     assert data_set in data_list , 'Your data set does not exist!'
     data_set_root = './output/'
     with open(data_set_root + data_set +'/output.json', 'r') as input:
@@ -663,6 +767,53 @@ def construct_webkb_prompt_graph(edge : list, nodes_label : dict, face_list : li
 
     prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
     node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
+    """
+
+    if additional_flag:
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
+
+    return prompt
+
+def construct_ptc_prompt_graph(edge : list, nodes_label : dict, face_list : list, diff_list : list, additional_flag : bool, addition_type : str):
+    prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}
+    node label format is {{ndoe id, node label}} , and node label dict is : {nodes_label} .
+    """
+
+    if additional_flag:
+        sc_prompt = f""" The graph simplicial complex list is : {face_list} .
+            """
+        
+        diff_prompt = f""" And I will show you a list, these numerical values represent the total persistence, calculated as the sum of lifespans (i.e., the difference between death and birth times) of topological features associated with each node's structure in the persistence diagram.
+            List: {diff_list}
+
+            """
+        if addition_type == 'sc':
+            prompt = sc_prompt + prompt
+        
+        if addition_type == 'tda':
+            prompt = prompt + diff_prompt
+
+        if addition_type == 'combine':
+            prompt = sc_prompt + prompt + diff_prompt
+
+    return prompt
+
+def construct_imdb_prompt_graph(edge : list, face_list : list, diff_list : list, additional_flag : bool, addition_type : str):
+    prompt = f""" edge format is [node_id, node_id, edge_label], and edge list is: {edge}.
     """
 
     if additional_flag:
@@ -864,7 +1015,7 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
     g_list = []
     label_dict = {}
     feat_dict = {}
-    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES']
+    data_list = ['MUTAG', 'PROTEINS', 'BZR', 'COX2', 'ENZYMES', 'PTC_MR', 'IMDB-MULTI', 'IMDB-BINARY']
     assert data_set in data_list , 'Your data set does not exist!'
 
     if latent:
@@ -950,11 +1101,14 @@ def load_data(data_set:str, degree_as_tag:bool, latent, erase_num, erase_type, a
         g.node_features = torch.zeros(len(g.node_tags), len(tagset))
         g.node_features[range(len(g.node_tags)), [tag2index[tag] for tag in g.node_tags]] = 1
 
-    if data_set == "MUTAG" or data_set == "PROTEINS" or data_set == "BZR" or data_set == "COX2":
+    if data_set == "MUTAG" or data_set == "PROTEINS" or data_set == "BZR" or data_set == "COX2" or data_set == "IMDB-BINARY":
         graph_type = 2
 
     if data_set == "ENZYMES":
         graph_type = 6
+
+    if data_set == "IMDB-MULTI":
+        graph_type = 3
 
     print('# classes: %d' % graph_type)
     print('# maximum node tag: %d' % len(tagset))
@@ -1278,9 +1432,70 @@ def power_tda(graph):
     return diffs_list
 
 
+def reorder_graph(
+    edges: list,
+    traversal: str = "orig",
+    root: Optional[int] = None,
+) -> list:
+    """
+    Reorder an edge list according to one of:
+      - orig:          no change
+      - bfs / dfs:     sort by earliest visit-time of either endpoint
+      - pagerank:      sort by descending avg PageRank score of endpoints
+      - ppr:           same as pagerank, personalized on `root`
+      - betweenness:   sort by descending avg betweenness centrality of endpoints
 
+    Betweenness centrality measures how often a node lies on shortest paths
+    between other node pairs—nodes with high betweenness are “bridges” or
+    bottlenecks in the graph.  It is unrelated to PageRank.
+    """
+    traversal = traversal.lower()
+    if traversal == "orig":
+        return edges
 
+    # Build an undirected view for traversal-based modes
+    G = nx.Graph()
+    for u, v, _ in edges:
+        G.add_edge(u, v)
 
-        
+    # Default root = smallest node
+    if root is None and G.nodes:
+        root = min(G.nodes)
 
+    # BFS / DFS
+    if traversal in ("bfs", "dfs"):
+        if traversal == "bfs":
+            visited = [root] + [v for _, v in nx.bfs_edges(G, root)]
+        else:
+            visited = [root] + [v for _, v in nx.dfs_edges(G, root)]
+        visit_time = {n: i for i, n in enumerate(visited)}
+        return sorted(
+            edges,
+            key=lambda e: min(
+                visit_time.get(e[0], float("inf")),
+                visit_time.get(e[1], float("inf"))
+            )
+        )
 
+    # PageRank / Personalized PageRank
+    if traversal in ("pagerank", "ppr"):
+        pr_kwargs = {}
+        if traversal == "ppr":
+            pr_kwargs["personalization"] = {root: 1.0}
+        scores = nx.pagerank(G, **pr_kwargs)
+        return sorted(
+            edges,
+            key=lambda e: (scores[e[0]] + scores[e[1]]) / 2,
+            reverse=True
+        )
+
+    # Betweenness centrality
+    if traversal == "betweenness":
+        bc = nx.betweenness_centrality(G)
+        return sorted(
+            edges,
+            key=lambda e: (bc[e[0]] + bc[e[1]]) / 2,
+            reverse=True
+        )
+
+    raise ValueError(f"Unknown traversal mode: {traversal}")
